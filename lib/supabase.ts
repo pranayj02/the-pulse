@@ -1,0 +1,13 @@
+import { createBrowserClient } from '@supabase/ssr'
+import type { Database } from './database.types'
+
+// ─── Browser client ───────────────────────────────────────────────────────────
+// Safe to use in Client Components. Uses anon key. RLS enforced.
+// NEVER use this in API routes or Server Components.
+
+export function createClient() {
+  return createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
