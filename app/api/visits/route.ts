@@ -9,7 +9,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Cafe is required.' }, { status: 400 })
     }
 
-    const supabase = await createSupabaseServerClient()
+    const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
