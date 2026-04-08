@@ -5,7 +5,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const q = searchParams.get('q')?.trim() ?? ''
 
-  const supabase = await createSupabaseServerClient()
+ const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
 
   const query = supabase
     .from('cafes')
