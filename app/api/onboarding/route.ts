@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 type OnboardingPayload = {
   categorySlug: string
-  selectedBrandIds: string[]
+  selectedBrandIds: string[]   // these arrive as slugs e.g. "blue-tokai"
   city?: string | null
 }
 
@@ -23,15 +23,12 @@ export async function POST(request: Request) {
 
     const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // ── Resolve category slug → UUID ──────────────────────────────────────────
     const { data: category, error: categoryError } = await supabase
       .from('categories')
       .select('id, slug')
@@ -42,20 +39,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid category.' }, { status: 400 })
     }
 
+    // ── Resolve brand slugs → UUIDs ───────────────────────────────────────────
+    const { data: brands, error: brandsError } = await supabase
+      .from('brands')
+      .select('id, slug')
+      .in('slug', selectedBrandIds)
+
+    if (brandsError || !brands || brands.length === 0) {
+      return NextResponse.json({ error: 'Could not resolve brand IDs.' }, { status: 400 })
+    }
+
+    // Build a slug → UUID map so we preserve the original selection order
+    const slugToId = Object.fromEntries(brands.map((b) => [b.slug, b.id]))
+    const resolvedBrandIds = selectedBrandIds
+      .map((slug) => slugToId[slug])
+      .filter(Boolean) as string[]
+
+    if (resolvedBrandIds.length < 5) {
+      return NextResponse.json(
+        { error: 'Could not match enough brands. Please try again.' },
+        { status: 400 }
+      )
+    }
+
+    // ── Update profile ────────────────────────────────────────────────────────
     const { error: profileError } = await supabase
       .from('profiles')
-      .upsert({
-        id: user.id,
-        city: city ?? null,
-      })
+      .upsert({ id: user.id, city: city ?? null })
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 500 })
     }
 
-    const shelfRows = selectedBrandIds.map((brandId, index) => ({
+    // ── Insert shelf items with real UUIDs ────────────────────────────────────
+    const shelfRows = resolvedBrandIds.map((brandId, index) => ({
       user_id: user.id,
-      brand_id: brandId,
+      brand_id: brandId,          // ✅ real UUID now
       category_id: category.id,
       rank: index + 1,
       score: 1200,
@@ -65,9 +84,7 @@ export async function POST(request: Request) {
 
     const { error: shelfError } = await supabase
       .from('shelf_items')
-      .upsert(shelfRows, {
-        onConflict: 'user_id,brand_id,category_id',
-      })
+      .upsert(shelfRows, { onConflict: 'user_id,brand_id,category_id' })
 
     if (shelfError) {
       return NextResponse.json({ error: shelfError.message }, { status: 500 })
@@ -76,7 +93,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       category: category.slug,
-      saved: selectedBrandIds.length,
+      saved: resolvedBrandIds.length,
     })
   } catch (error) {
     console.error('Onboarding API error:', error)
