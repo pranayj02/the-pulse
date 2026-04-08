@@ -1,20 +1,17 @@
 'use client'
 
+import { useState } from 'react'
 import { Compass, MapPin, Navigation, Sparkles } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { BrandCard } from '@/components/BrandCard'
+import { LogVisitModal } from '@/components/LogVisitModal'
 import { SEED_COFFEE_BRANDS } from '@/lib/constants'
 import type { Brand } from '@/lib/types'
 import dynamic from 'next/dynamic'
 
-const Map = dynamic(() => import('@/components/Map'), {
-  ssr: false,
-})
+const Map = dynamic(() => import('@/components/Map'), { ssr: false })
 
-const activeCategory = {
-  slug: 'coffee',
-  name: 'Coffee',
-}
+const activeCategory = { slug: 'coffee', name: 'Coffee' }
 
 const discoverBrands: Brand[] = SEED_COFFEE_BRANDS.slice(6, 10).map((brand, index) => ({
   id: `discover-brand-${index + 1}`,
@@ -33,21 +30,23 @@ const discoverBrands: Brand[] = SEED_COFFEE_BRANDS.slice(6, 10).map((brand, inde
 }))
 
 const places = [
-  { id: '1', name: 'Blue Tokai – Bandra', lat: 19.0596, lng: 72.8295 },
-  { id: '2', name: 'Subko – Lower Parel', lat: 18.9988, lng: 72.8258 },
-  { id: '3', name: 'Third Wave – Powai', lat: 19.1176, lng: 72.906 },
+  { id: '1', name: 'Blue Tokai – Bandra',    lat: 19.0596, lng: 72.8295 },
+  { id: '2', name: 'Subko – Lower Parel',    lat: 18.9988, lng: 72.8258 },
+  { id: '3', name: 'Third Wave – Powai',     lat: 19.1176, lng: 72.9060 },
   { id: '4', name: 'Kala Ghoda Café – Fort', lat: 18.9338, lng: 72.8354 },
 ]
 
 export default function DiscoverPage() {
+  const [showVisitModal, setShowVisitModal] = useState(false)
+
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
       <Header active="discover" />
 
       <div className="container space-y-6">
         <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-          
-          {/* LEFT SIDE */}
+
+          {/* ── Left: Discovery info ── */}
           <div className="card-strong p-6 md:p-8">
             <div className="pill mb-4">
               <Compass size={14} />
@@ -68,7 +67,6 @@ export default function DiscoverPage() {
                 <p className="text-sm text-muted">Recommended next</p>
                 <p className="mt-2 text-lg font-semibold text-white">Corridor Seven</p>
               </div>
-
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-sm text-muted">Why this fits</p>
                 <p className="mt-2 text-lg font-semibold text-white">
@@ -76,18 +74,41 @@ export default function DiscoverPage() {
                 </p>
               </div>
             </div>
+
+            {/* ── Cafe list with Log Visit ── */}
+            <div className="mt-6">
+              <p className="mb-3 text-xs uppercase tracking-[0.18em] text-faint">
+                Nearby cafés
+              </p>
+              <div className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10">
+                {places.map((place) => (
+                  <div
+                    key={place.id}
+                    className="flex items-center justify-between px-4 py-3 transition hover:bg-white/5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <MapPin size={14} className="shrink-0 text-accent" />
+                      <p className="text-sm font-medium text-white">{place.name}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowVisitModal(true)}
+                      className="pill text-xs transition hover:border-accent/40 hover:text-white"
+                    >
+                      Log visit
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* RIGHT SIDE (MAP) */}
+          {/* ── Right: Map ── */}
           <div className="card p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-faint">
-                  City map
-                </p>
-                <h2 className="heading-md mt-2 text-white">
-                  Mumbai discovery layer
-                </h2>
+                <p className="text-xs uppercase tracking-[0.18em] text-faint">City map</p>
+                <h2 className="heading-md mt-2 text-white">Mumbai discovery layer</h2>
               </div>
               <Navigation className="text-accent" size={18} />
             </div>
@@ -102,11 +123,21 @@ export default function DiscoverPage() {
                 </p>
               </div>
             </div>
+
+            {/* ── Log visit CTA below map ── */}
+            <button
+              type="button"
+              onClick={() => setShowVisitModal(true)}
+              className="cta-primary mt-4 w-full"
+            >
+              <MapPin size={16} />
+              <span>Log a visit</span>
+            </button>
           </div>
 
         </section>
 
-        {/* RECOMMENDED BRANDS */}
+        {/* ── Recommended brands ── */}
         <section className="card p-6">
           <div className="mb-5 flex items-center justify-between">
             <div>
@@ -127,12 +158,12 @@ export default function DiscoverPage() {
           </div>
         </section>
 
-        {/* STATS */}
+        {/* ── Stats ── */}
         <section className="grid gap-4 md:grid-cols-3">
           {[
-            { label: 'Hot zone', value: 'Bandra West' },
-            { label: 'Most saved café', value: 'Subko' },
-            { label: 'Weekend discovery trend', value: 'Single origin pour-overs' },
+            { label: 'Hot zone',                 value: 'Bandra West' },
+            { label: 'Most saved café',          value: 'Subko' },
+            { label: 'Weekend discovery trend',  value: 'Single origin pour-overs' },
           ].map((item) => (
             <div key={item.label} className="card p-5">
               <div className="mb-3 flex items-center gap-2">
@@ -143,8 +174,12 @@ export default function DiscoverPage() {
             </div>
           ))}
         </section>
-
       </div>
+
+      {/* ── Log Visit Modal ── */}
+      {showVisitModal && (
+        <LogVisitModal onClose={() => setShowVisitModal(false)} />
+      )}
     </main>
   )
 }
