@@ -195,3 +195,12 @@ export const SEED_CATEGORIES = [
 
 export type CategorySlug = (typeof SEED_CATEGORIES)[number]['slug']
 export type PriceRange = SeedBrand['price_range']
+
+// ─── Price Range Labels ───────────────────────────────────────────────────────
+
+export const PRICE_RANGE_LABELS: Record<string, string> = {
+  budget:  'Budget',
+  mid:     'Mid-range',
+  premium: 'Premium',
+  luxury:  'Luxury',
+}
