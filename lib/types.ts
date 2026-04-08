@@ -125,4 +125,32 @@ export type LeaderboardType =
 
 // ─── Cafes / Map ──────────────────────────────────────────────────────────────
 
-export 
+export type Cafe = {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  address: string
+  city: string
+  lat: number
+  lng: number
+  cover_image_url: string | null
+  website_url: string | null
+  instagram_url: string | null
+  is_verified: boolean
+  is_active: boolean
+  created_at: string
+  // joined
+  brands?: Brand[]
+}
+
+export type CafeVisit = {
+  id: string
+  user_id: string
+  cafe_id: string
+  visited_at: string
+  note: string | null
+  created_at: string
+  // joined
+  cafe?: Cafe
+}
