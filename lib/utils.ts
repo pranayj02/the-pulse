@@ -1,3 +1,13 @@
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+// ─── Class name merger ────────────────────────────────────────────────────────
+// Used by all components: cn('base-class', condition && 'conditional-class')
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
 // ─── ELO Score Calculator ─────────────────────────────────────────────────────
 // Standard ELO with K=32, used to update shelf scores after each face-off
 
@@ -20,8 +30,8 @@ export function updateElo(
   return { newWinner, newLoser }
 }
 
-// ─── URL helper for OAuth redirects ──────────────────────────────────────────
-// Resolves the correct base URL across local, preview, and production
+// ─── Site URL resolver ────────────────────────────────────────────────────────
+// Resolves correct base URL across local, Vercel preview, and production
 
 export function getSiteUrl(): string {
   let url =
@@ -35,7 +45,7 @@ export function getSiteUrl(): string {
   return url
 }
 
-// ─── Misc ────────────────────────────────────────────────────────────────────
+// ─── Misc helpers ─────────────────────────────────────────────────────────────
 
 export function slugify(str: string): string {
   return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
