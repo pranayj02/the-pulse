@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { updateElo } from '@/lib/utils'
+import type { Database } from '@/lib/database.types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 type FaceoffPayload = {
   categoryId: string
@@ -39,7 +41,9 @@ export async function POST(request: Request) {
 
     const loserId = winnerId === brandAId ? brandBId : brandAId
 
-    const supabase = await createSupabaseServerClient()
+    
+
+    const supabase = await createSupabaseServerClient() as SupabaseClient<Database>
 
     const {
       data: { user },
