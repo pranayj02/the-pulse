@@ -49,6 +49,7 @@ export type Database = {
           is_pioneer?: boolean
           created_at?: string
         }
+        Relationships: []
       }
       categories: {
         Row: {
@@ -78,6 +79,7 @@ export type Database = {
           is_active?: boolean
           created_at?: string
         }
+        Relationships: []
       }
       brands: {
         Row: {
@@ -125,6 +127,15 @@ export type Database = {
           is_active?: boolean
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'brands_category_id_fkey'
+            columns: ['category_id']
+            isOneToOne: false
+            referencedRelation: 'categories'
+            referencedColumns: ['id']
+          }
+        ]
       }
       comparisons: {
         Row: {
@@ -154,6 +165,43 @@ export type Database = {
           winner_id?: string
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'comparisons_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comparisons_category_id_fkey'
+            columns: ['category_id']
+            isOneToOne: false
+            referencedRelation: 'categories'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comparisons_brand_a_id_fkey'
+            columns: ['brand_a_id']
+            isOneToOne: false
+            referencedRelation: 'brands'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comparisons_brand_b_id_fkey'
+            columns: ['brand_b_id']
+            isOneToOne: false
+            referencedRelation: 'brands'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comparisons_winner_id_fkey'
+            columns: ['winner_id']
+            isOneToOne: false
+            referencedRelation: 'brands'
+            referencedColumns: ['id']
+          }
+        ]
       }
       shelf_items: {
         Row: {
@@ -189,6 +237,29 @@ export type Database = {
           tried_at?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'shelf_items_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'shelf_items_brand_id_fkey'
+            columns: ['brand_id']
+            isOneToOne: false
+            referencedRelation: 'brands'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'shelf_items_category_id_fkey'
+            columns: ['category_id']
+            isOneToOne: false
+            referencedRelation: 'categories'
+            referencedColumns: ['id']
+          }
+        ]
       }
       user_badges: {
         Row: {
@@ -209,6 +280,15 @@ export type Database = {
           badge_slug?: string
           earned_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'user_badges_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
       }
       follows: {
         Row: {
@@ -226,6 +306,22 @@ export type Database = {
           following_id?: string
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'follows_follower_id_fkey'
+            columns: ['follower_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'follows_following_id_fkey'
+            columns: ['following_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
       }
       cafes: {
         Row: {
@@ -264,6 +360,7 @@ export type Database = {
           review_count?: number
           created_at?: string
         }
+        Relationships: []
       }
       cafe_reviews: {
         Row: {
@@ -290,10 +387,27 @@ export type Database = {
           body?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'cafe_reviews_cafe_id_fkey'
+            columns: ['cafe_id']
+            isOneToOne: false
+            referencedRelation: 'cafes'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'cafe_reviews_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
       }
     }
-    Views: Record<string, never>
-    Functions: Record<string, never>
-    Enums: Record<string, never>
+    Views: { [_ in never]: never }
+    Functions: { [_ in never]: never }
+    Enums: { [_ in never]: never }
+    CompositeTypes: { [_ in never]: never }
   }
 }
