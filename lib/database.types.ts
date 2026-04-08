@@ -404,6 +404,82 @@ export type Database = {
           }
         ]
       }
+      // ── NEW ──────────────────────────────────────────────────────────────────
+      cafe_visits: {
+        Row: {
+          id: string
+          user_id: string
+          cafe_id: string
+          visited_at: string
+          note: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          cafe_id: string
+          visited_at?: string
+          note?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          cafe_id?: string
+          visited_at?: string
+          note?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'cafe_visits_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'cafe_visits_cafe_id_fkey'
+            columns: ['cafe_id']
+            isOneToOne: false
+            referencedRelation: 'cafes'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      cafe_brands: {
+        Row: {
+          id: string
+          cafe_id: string
+          brand_id: string
+        }
+        Insert: {
+          id?: string
+          cafe_id: string
+          brand_id: string
+        }
+        Update: {
+          id?: string
+          cafe_id?: string
+          brand_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'cafe_brands_cafe_id_fkey'
+            columns: ['cafe_id']
+            isOneToOne: false
+            referencedRelation: 'cafes'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'cafe_brands_brand_id_fkey'
+            columns: ['brand_id']
+            isOneToOne: false
+            referencedRelation: 'brands'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: { [_ in never]: never }
     Functions: { [_ in never]: never }
