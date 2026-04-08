@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import type { Database } from '@/lib/database.types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 type OnboardingPayload = {
   categorySlug: string
@@ -19,7 +21,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = await createSupabaseServerClient()
+    const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
 
     const {
       data: { user },
