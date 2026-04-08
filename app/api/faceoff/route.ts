@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     
 
-    const supabase = await createSupabaseServerClient() as SupabaseClient<Database>
+    const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
 
     const {
       data: { user },
