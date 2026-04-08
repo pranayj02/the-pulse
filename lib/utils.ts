@@ -1,15 +1,41 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { XP_LEVELS, getLevelFromXP } from './constants'
+import type { XPLevel } from './types'
 
 // ─── Class name merger ────────────────────────────────────────────────────────
-// Used by all components: cn('base-class', condition && 'conditional-class')
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// ─── XP Progress ─────────────────────────────────────────────────────────────
+
+export function getXPProgress(xp: number): {
+  level: XPLevel
+  label: string
+  emoji: string
+  current: number
+  min: number
+  max: number
+  percentage: number
+} {
+  const level = getLevelFromXP(xp)
+  const { label, emoji, min } = XP_LEVELS[level]
+
+  const levels = Object.values(XP_LEVELS).sort((a, b) => a.min - b.min)
+  const currentIndex = levels.findIndex((l) => l.min === min)
+  const nextLevel = levels[currentIndex + 1]
+  const max = nextLevel?.min ?? min + 500
+
+  const percentage = nextLevel
+    ? Math.min(100, Math.round(((xp - min) / (max - min)) * 100))
+    : 100
+
+  return { level, label, emoji, current: xp, min, max, percentage }
+}
+
 // ─── ELO Score Calculator ─────────────────────────────────────────────────────
-// Standard ELO with K=32, used to update shelf scores after each face-off
 
 const K_FACTOR = 32
 
@@ -31,7 +57,6 @@ export function updateElo(
 }
 
 // ─── Site URL resolver ────────────────────────────────────────────────────────
-// Resolves correct base URL across local, Vercel preview, and production
 
 export function getSiteUrl(): string {
   let url =
