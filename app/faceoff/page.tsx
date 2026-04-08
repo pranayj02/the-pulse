@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useMemo } from 'react'
-import { ArrowLeftRight, Flame, Loader2, RotateCcw, Zap } from 'lucide-react'
+import { ArrowLeftRight, Flame, RotateCcw, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Header } from '@/components/Header'
 import { BrandCard } from '@/components/BrandCard'
@@ -49,51 +49,50 @@ export default function FaceoffPage() {
   const pool = useMemo(() => buildPool(), [])
   const [pairIndex, setPairIndex] = useState(0)
   const [picksToday, setPicksToday] = useState(0)
-  const [loading, setLoading] = useState(false)
+
+  // Track which brand was picked — null means no pick yet
+  const [pickedWinnerId, setPickedWinnerId] = useState<string | null>(null)
 
   const total = pool.length
   const current = pool[pairIndex] ?? null
   const isLast = pairIndex >= total - 1
 
-  const handlePick = async (winner: Brand, loser: Brand) => {
-    if (loading) return
+  const handlePick = (winner: Brand, loser: Brand) => {
+    // Prevent double-picks during animation
+    if (pickedWinnerId) return
 
-    try {
-      setLoading(true)
+    // 1. Immediately show winner animation
+    setPickedWinnerId(winner.id)
 
-      const response = await fetch('/api/faceoff', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          categoryId: winner.category_id,
-          brandAId: winner.id,
-          brandBId: loser.id,
-          winnerId: winner.id,
-        }),
+    // 2. Fire API in background — don't await
+    fetch('/api/faceoff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        categoryId: winner.category_id,
+        brandAId: winner.id,
+        brandBId: loser.id,
+        winnerId: winner.id,
+      }),
+    })
+      .then((r) => r.json())
+      .then((result) => {
+        if (!result.success) {
+          toast.error(result.error || 'Could not save face-off.')
+        }
       })
+      .catch(() => toast.error('Could not save face-off.'))
 
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Could not save face-off.')
-      }
-
-      toast.success(`${winner.name} wins this round.`)
+    // 3. Advance after animation completes (600ms)
+    setTimeout(() => {
+      setPickedWinnerId(null)
       setPicksToday((prev) => prev + 1)
-
-      if (!isLast) {
-        setPairIndex((prev) => prev + 1)
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Could not save face-off.'
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
+      if (!isLast) setPairIndex((prev) => prev + 1)
+    }, 600)
   }
 
   const handleSkip = () => {
+    if (pickedWinnerId) return
     if (!isLast) {
       setPairIndex((prev) => prev + 1)
     } else {
@@ -101,25 +100,21 @@ export default function FaceoffPage() {
     }
   }
 
-  // ─── Session complete ────────────────────────────────────────────────────────
+  // ─── Session complete ──────────────────────────────────────────────────────
 
-  if (picksToday > 0 && isLast) {
+  if (picksToday > 0 && isLast && !pickedWinnerId) {
     return (
       <main id="main-content" className="page-shell bottom-nav-space">
         <Header />
-
         <div className="container">
           <div className="mx-auto max-w-2xl">
             <div className="card-strong p-8 text-center">
               <p className="text-5xl">🏆</p>
-
               <h1 className="heading-md mt-4 text-white">Session complete</h1>
-
               <p className="mt-3 text-base leading-7 text-muted">
                 You made {picksToday} picks this session. Your shelf has been updated
                 and your leaderboard position may have shifted.
               </p>
-
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 {[
                   { label: 'Picks today', value: `${picksToday}` },
@@ -132,7 +127,6 @@ export default function FaceoffPage() {
                   </div>
                 ))}
               </div>
-
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
                 <button
                   type="button"
@@ -142,7 +136,6 @@ export default function FaceoffPage() {
                   <RotateCcw size={16} />
                   <span>Start new session</span>
                 </button>
-
                 <Link href="/shelf" className="cta-primary">
                   View updated shelf
                 </Link>
@@ -158,7 +151,38 @@ export default function FaceoffPage() {
 
   const [brandA, brandB] = current
 
-  // ─── Main face-off ───────────────────────────────────────────────────────────
+  // ─── Card state helpers ────────────────────────────────────────────────────
+
+  const getCardClass = (brand: Brand) => {
+    if (!pickedWinnerId) {
+      // idle — normal hover behaviour
+      return 'opacity-100 scale-100'
+    }
+    if (brand.id === pickedWinnerId) {
+      // winner — green glow
+      return 'opacity-100 scale-[1.02]'
+    }
+    // loser — dim and shrink
+    return 'opacity-30 scale-[0.97]'
+  }
+
+  const getCardRingClass = (brand: Brand) => {
+    if (brand.id === pickedWinnerId) {
+      return 'ring-2 ring-emerald-400/60 shadow-[0_0_24px_rgba(52,211,153,0.2)]'
+    }
+    return pickedWinnerId
+      ? '' // loser — no ring
+      : 'group-hover:ring-2 group-hover:ring-accent/40'
+  }
+
+  const getCardBgClass = (brand: Brand) => {
+    if (brand.id === pickedWinnerId) {
+      return 'bg-emerald-500/10'
+    }
+    return ''
+  }
+
+  // ─── Main face-off ─────────────────────────────────────────────────────────
 
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
@@ -172,15 +196,12 @@ export default function FaceoffPage() {
                 <Zap size={14} />
                 <span>Face-off · Coffee</span>
               </div>
-
               <h1 className="section-title text-white">Which one wins for you?</h1>
-
               <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
                 Tap a brand to pick your preference. That single decision updates your shelf,
                 improves recommendations, and moves your leaderboard standing.
               </p>
             </div>
-
             <div className="flex flex-wrap gap-3">
               <div className="pill">
                 <span>Round</span>
@@ -194,36 +215,54 @@ export default function FaceoffPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-stretch">
+            {/* Brand A */}
             <button
               type="button"
               onClick={() => handlePick(brandA, brandB)}
-              disabled={loading}
-              className="group text-left transition hover:-translate-y-1 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!!pickedWinnerId}
+              className={[
+                'group text-left transition-all duration-500',
+                'disabled:cursor-default',
+                getCardClass(brandA),
+              ].join(' ')}
               aria-label={`Pick ${brandA.name}`}
             >
-              <div className="h-full rounded-[20px] transition group-hover:ring-2 group-hover:ring-accent/40">
+              <div className={[
+                'h-full rounded-[20px] transition-all duration-500',
+                getCardRingClass(brandA),
+                getCardBgClass(brandA),
+              ].join(' ')}>
                 <BrandCard brand={brandA} />
               </div>
             </button>
 
-            {/* VS divider — unique shape, no globals equivalent */}
+            {/* VS divider */}
             <div className="flex items-center justify-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white">
-                {loading
-                  ? <Loader2 size={18} className="animate-spin" />
-                  : <ArrowLeftRight size={18} />
-                }
+              <div className={[
+                'flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition-all duration-500',
+                pickedWinnerId ? 'opacity-0 scale-75' : 'opacity-100 scale-100',
+              ].join(' ')}>
+                <ArrowLeftRight size={18} />
               </div>
             </div>
 
+            {/* Brand B */}
             <button
               type="button"
               onClick={() => handlePick(brandB, brandA)}
-              disabled={loading}
-              className="group text-left transition hover:-translate-y-1 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!!pickedWinnerId}
+              className={[
+                'group text-left transition-all duration-500',
+                'disabled:cursor-default',
+                getCardClass(brandB),
+              ].join(' ')}
               aria-label={`Pick ${brandB.name}`}
             >
-              <div className="h-full rounded-[20px] transition group-hover:ring-2 group-hover:ring-accent/40">
+              <div className={[
+                'h-full rounded-[20px] transition-all duration-500',
+                getCardRingClass(brandB),
+                getCardBgClass(brandB),
+              ].join(' ')}>
                 <BrandCard brand={brandB} />
               </div>
             </button>
@@ -233,13 +272,12 @@ export default function FaceoffPage() {
             <button
               type="button"
               onClick={handleSkip}
-              disabled={loading}
-              className="cta-secondary disabled:opacity-60"
+              disabled={!!pickedWinnerId}
+              className="cta-secondary disabled:opacity-40"
             >
               <RotateCcw size={16} />
               <span>Skip this pair</span>
             </button>
-
             <Link href="/shelf" className="cta-primary">
               See current shelf
             </Link>
