@@ -30,13 +30,6 @@ const discoverBrands: Brand[] = SEED_COFFEE_BRANDS.slice(6, 10).map((brand, inde
   created_at: new Date().toISOString(),
 }))
 
-const cafePins = [
-  { name: 'Bandra West', top: '22%', left: '28%' },
-  { name: 'Lower Parel', top: '38%', left: '46%' },
-  { name: 'Powai', top: '20%', left: '68%' },
-  { name: 'Fort', top: '62%', left: '35%' },
-]
-
 const places = [
   { id: '1', name: 'Blue Tokai – Bandra', lat: 19.0596, lng: 72.8295 },
   { id: '2', name: 'Subko – Lower Parel', lat: 18.9988, lng: 72.8258 },
@@ -51,6 +44,8 @@ export default function DiscoverPage() {
 
       <div className="container space-y-6">
         <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+          
+          {/* LEFT SIDE */}
           <div className="card-strong p-6 md:p-8">
             <div className="pill mb-4">
               <Compass size={14} />
@@ -81,10 +76,13 @@ export default function DiscoverPage() {
             </div>
           </div>
 
+          {/* RIGHT SIDE (MAP) */}
           <div className="card p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-faint">City map</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-faint">
+                  City map
+                </p>
                 <h2 className="heading-md mt-2 text-white">
                   Mumbai discovery layer
                 </h2>
@@ -94,7 +92,7 @@ export default function DiscoverPage() {
 
             <div className="relative h-[400px] w-full overflow-hidden rounded-2xl">
               <Map places={places} />
-            
+
               <div className="absolute bottom-4 left-4 rounded-2xl border border-white/10 bg-[#11141a]/90 p-4 backdrop-blur">
                 <p className="text-sm font-semibold text-white">Live map layer</p>
                 <p className="mt-1 max-w-xs text-sm leading-6 text-muted">
@@ -102,18 +100,11 @@ export default function DiscoverPage() {
                 </p>
               </div>
             </div>
-
-              <div className="absolute bottom-4 left-4 rounded-2xl border border-white/10 bg-[#11141a]/90 p-4 backdrop-blur">
-                <p className="text-sm font-semibold text-white">Live map layer</p>
-                <p className="mt-1 max-w-xs text-sm leading-6 text-muted">
-                  This placeholder becomes your real discovery map once we connect places data and
-                  category-aware venue filters.
-                </p>
-              </div>
-            </div>
           </div>
+
         </section>
 
+        {/* RECOMMENDED BRANDS */}
         <section className="card p-6">
           <div className="mb-5 flex items-center justify-between">
             <div>
@@ -134,6 +125,7 @@ export default function DiscoverPage() {
           </div>
         </section>
 
+        {/* STATS */}
         <section className="grid gap-4 md:grid-cols-3">
           {[
             { label: 'Hot zone', value: 'Bandra West' },
@@ -149,6 +141,7 @@ export default function DiscoverPage() {
             </div>
           ))}
         </section>
+
       </div>
     </main>
   )
