@@ -9,18 +9,21 @@ import { Header } from '@/components/Header'
 import { CategoryPill } from '@/components/CategoryPill'
 import { SEED_CATEGORIES, SEED_COFFEE_BRANDS } from '@/lib/constants'
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function OnboardingPage() {
   const router = useRouter()
+
   const [selectedCategory, setSelectedCategory] = useState('coffee')
   const [selectedBrands, setSelectedBrands] = useState<string[]>(
-    SEED_COFFEE_BRANDS.slice(0, 5).map((brand) =>
-      brand.name.toLowerCase().replace(/\s+/g, '-')
+    SEED_COFFEE_BRANDS.slice(0, 5).map((b) =>
+      b.name.toLowerCase().replace(/\s+/g, '-')
     )
   )
   const [city, setCity] = useState('Mumbai')
   const [saving, setSaving] = useState(false)
 
-  const coffeeBrandOptions = useMemo(
+  const brandOptions = useMemo(
     () =>
       SEED_COFFEE_BRANDS.map((brand) => ({
         id: brand.name.toLowerCase().replace(/\s+/g, '-'),
@@ -49,9 +52,7 @@ export default function OnboardingPage() {
 
       const response = await fetch('/api/onboarding', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           categorySlug: selectedCategory,
           selectedBrandIds: selectedBrands,
@@ -82,13 +83,15 @@ export default function OnboardingPage() {
 
       <div className="container">
         <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+
+          {/* ── Step 1: Category + City ── */}
           <section className="card-strong p-6 md:p-8">
             <div className="mb-6">
               <div className="pill mb-4">
                 <span>Step 1 of 2</span>
               </div>
               <h1 className="section-title text-white">Choose your first category</h1>
-              <p className="mt-3 max-w-xl text-base leading-7 text-muted">
+              <p className="mt-3 text-base leading-7 text-muted">
                 Coffee is your pilot, but the product is designed to scale across categories.
                 Your taste graph starts here.
               </p>
@@ -111,27 +114,43 @@ export default function OnboardingPage() {
               ))}
             </div>
 
-            <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-faint">Why category-first?</p>
+            <div className="card mt-8 p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-faint">
+                Why category-first?
+              </p>
               <ul className="mt-4 space-y-3 text-sm leading-6 text-muted">
                 <li className="flex gap-3">
                   <Check size={16} className="mt-1 shrink-0 text-accent" />
-                  <span>Leaderboards, shelves, and discovery all stay scoped and interpretable.</span>
+                  <span>
+                    Leaderboards, shelves, and discovery stay scoped and interpretable.
+                  </span>
                 </li>
                 <li className="flex gap-3">
                   <Check size={16} className="mt-1 shrink-0 text-accent" />
-                  <span>You can add skincare, tea, supplements, and more later without redesigning the app.</span>
+                  <span>
+                    You can add skincare, tea, supplements, and more later without
+                    redesigning the app.
+                  </span>
                 </li>
                 <li className="flex gap-3">
                   <Check size={16} className="mt-1 shrink-0 text-accent" />
-                  <span>Every comparison becomes cleaner because users stay in one taste context at a time.</span>
+                  <span>
+                    Every comparison is cleaner because users stay in one taste
+                    context at a time.
+                  </span>
                 </li>
               </ul>
             </div>
 
             <div className="mt-6">
-              <label className="mb-2 block text-sm font-medium text-white">Your city</label>
+              <label
+                htmlFor="city"
+                className="mb-2 block text-sm font-medium text-white"
+              >
+                Your city
+              </label>
               <input
+                id="city"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 className="input"
@@ -140,29 +159,34 @@ export default function OnboardingPage() {
             </div>
           </section>
 
+          {/* ── Step 2: Brand picker ── */}
           <section className="card p-6 md:p-8">
             <div className="mb-6">
               <div className="pill mb-4">
                 <span>Step 2 of 2</span>
               </div>
-              <h2 className="heading-md text-white">Pick brands you’ve actually tried</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                Select at least 5. These seed your first face-offs and help us build your starting shelf.
+              <h2 className="heading-md text-white">
+                Pick brands you've actually tried
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Select at least 5. These seed your first face-offs and help us build
+                your starting shelf.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {coffeeBrandOptions.map((brand) => {
+              {brandOptions.map((brand) => {
                 const isSelected = selectedBrands.includes(brand.id)
 
                 return (
                   <label
                     key={brand.id}
-                    className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${
+                    className={[
+                      'flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition',
                       isSelected
                         ? 'border-accent/30 bg-accent/10'
-                        : 'border-white/10 bg-white/5 hover:border-white/20'
-                    }`}
+                        : 'border-white/10 bg-white/5 hover:border-white/20',
+                    ].join(' ')}
                   >
                     <input
                       type="checkbox"
@@ -172,7 +196,9 @@ export default function OnboardingPage() {
                     />
                     <div>
                       <p className="font-semibold text-white">{brand.name}</p>
-                      <p className="mt-1 text-sm leading-5 text-muted">{brand.tagline}</p>
+                      <p className="mt-1 text-sm leading-5 text-muted">
+                        {brand.tagline}
+                      </p>
                     </div>
                   </label>
                 )
@@ -181,7 +207,7 @@ export default function OnboardingPage() {
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted">
-                {selectedBrands.length} selected · You can edit this later from your profile
+                {selectedBrands.length} selected · Editable later from your profile
               </p>
 
               <div className="flex gap-3">
@@ -210,6 +236,7 @@ export default function OnboardingPage() {
               </div>
             </div>
           </section>
+
         </div>
       </div>
     </main>
