@@ -4,7 +4,8 @@ import { Toaster } from 'react-hot-toast'
 
 export const metadata: Metadata = {
   title: 'The Pulse',
-  description: 'Rank your favourite brands, build your shelf, and discover your taste graph.',
+  description:
+    'Rank your favourite brands, build your shelf, and discover your taste graph.',
 }
 
 export default function RootLayout({
@@ -15,38 +16,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <a
-          href="#main-content"
-          style={{
-            position: 'absolute',
-            left: '-9999px',
-            top: 'auto',
-            width: '1px',
-            height: '1px',
-            overflow: 'hidden',
-          }}
-          onFocus={(e) => {
-            e.currentTarget.style.left = '16px'
-            e.currentTarget.style.top = '16px'
-            e.currentTarget.style.width = 'auto'
-            e.currentTarget.style.height = 'auto'
-            e.currentTarget.style.padding = '10px 14px'
-            e.currentTarget.style.background = '#f5c542'
-            e.currentTarget.style.color = '#111315'
-            e.currentTarget.style.borderRadius = '999px'
-            e.currentTarget.style.zIndex = '9999'
-          }}
-          onBlur={(e) => {
-            e.currentTarget.style.left = '-9999px'
-            e.currentTarget.style.width = '1px'
-            e.currentTarget.style.height = '1px'
-            e.currentTarget.style.padding = '0'
-          }}
-        >
+        <a href="#main-content" className="skip-link">
           Skip to content
         </a>
 
-        {children}
+        <main id="main-content">
+          {children}
+        </main>
 
         <Toaster
           position="top-center"
