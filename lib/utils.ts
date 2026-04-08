@@ -16,23 +16,16 @@ export function getXPProgress(xp: number): {
   label: string
   emoji: string
   current: number
-  min: number
-  max: number
-  percentage: number
+  next: number
+  percent: number
 } {
   const level = getLevelFromXP(xp)
   const { label, emoji, min } = XP_LEVELS[level]
-
-  const levels = Object.values(XP_LEVELS).sort((a, b) => a.min - b.min)
-  const currentIndex = levels.findIndex((l) => l.min === min)
-  const nextLevel = levels[currentIndex + 1]
-  const max = nextLevel?.min ?? min + 500
-
-  const percentage = nextLevel
-    ? Math.min(100, Math.round(((xp - min) / (max - min)) * 100))
-    : 100
-
-  return { level, label, emoji, current: xp, min, max, percentage }
+  const levels = Object.values(XP_LEVELS).map(l => l.min).sort((a, b) => a - b)
+  const currentMin = min
+  const nextMin = levels.find(l => l > currentMin) ?? currentMin
+  const percent = nextMin === currentMin ? 100 : Math.round(((xp - currentMin) / (nextMin - currentMin)) * 100)
+  return { level, label, emoji, current: xp, next: nextMin, percent }
 }
 
 // ─── ELO Score Calculator ─────────────────────────────────────────────────────
