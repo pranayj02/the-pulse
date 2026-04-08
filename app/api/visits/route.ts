@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import type { Database } from '@/lib/database.types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
   try {
@@ -10,6 +12,7 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
+
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -28,15 +31,14 @@ export async function POST(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    // Fetch brands served at this cafe for post-visit faceoff
     const { data: cafeBrands } = await supabase
       .from('cafe_brands')
       .select('brand_id')
       .eq('cafe_id', cafeId)
 
     return NextResponse.json({
-      success: true,
-      visitId: visit.id,
+      success:  true,
+      visitId:  visit.id,
       brandIds: cafeBrands?.map((b) => b.brand_id) ?? [],
     })
   } catch {
