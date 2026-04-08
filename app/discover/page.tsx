@@ -1,3 +1,5 @@
+'use client'
+
 import { Compass, MapPin, Navigation, Sparkles } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { BrandCard } from '@/components/BrandCard'
