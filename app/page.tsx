@@ -1,12 +1,18 @@
+'use client'
+
 import Link from 'next/link'
+import { useState } from 'react'
 import { ArrowRight, Flame, MapPin, Swords, Trophy } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { BrandCard } from '@/components/BrandCard'
 import { XPBadge } from '@/components/XPBadge'
+import { LogVisitModal } from '@/components/LogVisitModal'
 import { SEED_COFFEE_BRANDS } from '@/lib/constants'
 import type { Brand } from '@/lib/types'
 
 export default function HomePage() {
+  const [showVisitModal, setShowVisitModal] = useState(false)
+
   const topBrands: Brand[] = SEED_COFFEE_BRANDS.slice(0, 3).map((brand, index) => ({
     id: `seed-brand-${index + 1}`,
     category_id: 'coffee',
@@ -28,6 +34,7 @@ export default function HomePage() {
       <Header active="home" />
 
       <div className="container space-y-6">
+        {/* ── Hero ── */}
         <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="card-strong p-6 md:p-8">
             <div className="pill mb-4">
@@ -40,7 +47,7 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-              You’re currently in the top 12% of coffee rankers in Mumbai. Complete more face-offs,
+              You're currently in the top 12% of coffee rankers in Mumbai. Complete more face-offs,
               discover more cafés, and unlock your next badge.
             </p>
 
@@ -51,14 +58,12 @@ export default function HomePage() {
                   <span className="stat-label">Face-offs done</span>
                 </div>
               </div>
-
               <div className="card p-4">
                 <div className="stat">
                   <span className="stat-value text-white">#18</span>
                   <span className="stat-label">Mumbai rank</span>
                 </div>
               </div>
-
               <div className="card p-4">
                 <div className="stat">
                   <span className="stat-value text-white">9</span>
@@ -73,9 +78,18 @@ export default function HomePage() {
                 <span>Start face-off</span>
               </Link>
 
-              <Link href="/discover" className="cta-secondary">
+              {/* ── Primary recurring action ── */}
+              <button
+                type="button"
+                onClick={() => setShowVisitModal(true)}
+                className="cta-primary"
+              >
                 <MapPin size={18} />
-                <span>Open discovery map</span>
+                <span>Log a visit</span>
+              </button>
+
+              <Link href="/discover" className="cta-secondary">
+                <span>Discovery map</span>
               </Link>
             </div>
           </div>
@@ -83,6 +97,7 @@ export default function HomePage() {
           <XPBadge xp={164} />
         </section>
 
+        {/* ── Shelf + Badges ── */}
         <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
           <div className="card p-6">
             <div className="mb-5 flex items-center justify-between">
@@ -119,10 +134,10 @@ export default function HomePage() {
 
             <div className="grid gap-3 sm:grid-cols-2">
               {[
-                { name: 'First Sip', emoji: '🌱', state: 'Unlocked' },
-                { name: 'Early Bird', emoji: '☕', state: 'Unlocked' },
+                { name: 'First Sip',    emoji: '🌱', state: 'Unlocked' },
+                { name: 'Early Bird',   emoji: '☕', state: 'Unlocked' },
                 { name: 'Power Brewer', emoji: '⚡', state: '53 / 100 face-offs' },
-                { name: 'Explorer', emoji: '🗺️', state: '2 / 3 cafés reviewed' },
+                { name: 'Explorer',     emoji: '🗺️', state: '2 / 3 cafés reviewed' },
               ].map((badge) => (
                 <div key={badge.name} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <div className="mb-2 flex items-center gap-2">
@@ -137,19 +152,24 @@ export default function HomePage() {
             <div className="mt-5 rounded-2xl border border-accent/20 bg-accent/10 p-4">
               <p className="text-sm font-semibold text-white">Next unlock</p>
               <p className="mt-1 text-sm leading-6 text-muted">
-                Complete 47 more face-offs to earn <span className="text-white">Power Brewer</span>.
+                Complete 47 more face-offs to earn{' '}
+                <span className="text-white">Power Brewer</span>.
               </p>
             </div>
           </div>
         </section>
 
+        {/* ── City pulse ── */}
         <section className="card p-6">
           <div className="mb-5 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-faint">City pulse</p>
               <h2 className="heading-md mt-2 text-white">Trending now in Mumbai</h2>
             </div>
-            <Link href="/leaderboard" className="inline-flex items-center gap-2 text-sm font-medium text-accent">
+            <Link
+              href="/leaderboard"
+              className="inline-flex items-center gap-2 text-sm font-medium text-accent"
+            >
               <span>See leaderboard</span>
               <ArrowRight size={16} />
             </Link>
@@ -157,9 +177,9 @@ export default function HomePage() {
 
           <div className="grid gap-4 md:grid-cols-3">
             {[
-              { label: 'Most compared brand', value: 'Blue Tokai' },
+              { label: 'Most compared brand',  value: 'Blue Tokai' },
               { label: 'Fastest rising shelf', value: 'Araku Coffee' },
-              { label: 'Hot café zone', value: 'Bandra West' },
+              { label: 'Hot café zone',         value: 'Bandra West' },
             ].map((item) => (
               <div key={item.label} className="rounded-3xl border border-white/10 bg-white/5 p-5">
                 <p className="text-sm text-muted">{item.label}</p>
@@ -169,6 +189,11 @@ export default function HomePage() {
           </div>
         </section>
       </div>
+
+      {/* ── Log Visit Modal ── */}
+      {showVisitModal && (
+        <LogVisitModal onClose={() => setShowVisitModal(false)} />
+      )}
     </main>
   )
 }
