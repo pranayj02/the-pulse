@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import type { Database } from '@/lib/database.types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const q = searchParams.get('q')?.trim() ?? ''
 
- const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
+  const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
 
   const query = supabase
     .from('cafes')
-    .select('id, name, city, address:addr')
-    .eq('is_active' as never, true)
+    .select('id, name, city, address')
     .limit(8)
 
   if (q.length > 0) {
