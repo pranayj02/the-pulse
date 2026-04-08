@@ -4,9 +4,14 @@ import { BrandCard } from '@/components/BrandCard'
 import { SEED_COFFEE_BRANDS } from '@/lib/constants'
 import type { Brand } from '@/lib/types'
 
+const activeCategory = {
+  slug: 'coffee',
+  name: 'Coffee',
+}
+
 const shelfBrands: Brand[] = SEED_COFFEE_BRANDS.slice(0, 6).map((brand, index) => ({
   id: `shelf-brand-${index + 1}`,
-  category_id: 'coffee',
+  category_id: activeCategory.slug,
   name: brand.name,
   slug: brand.name.toLowerCase().replace(/\s+/g, '-'),
   logo_url: null,
@@ -29,10 +34,15 @@ export default function ShelfPage() {
         <section className="card-strong p-6 md:p-8">
           <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-faint">My shelf</p>
-              <h1 className="section-title mt-2 text-white">Your ranked coffee graph</h1>
+              <p className="text-xs uppercase tracking-[0.18em] text-faint">
+                My shelf · {activeCategory.name}
+              </p>
+              <h1 className="section-title mt-2 text-white">
+                Your {activeCategory.name} shelf
+              </h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
-                This shelf updates as you keep choosing. It’s your live preference model, not a static wishlist.
+                Your shelf is a live ranking for the currently selected category. As you keep making
+                face-off picks, this order updates and becomes a sharper model of your taste.
               </p>
             </div>
 
@@ -51,10 +61,13 @@ export default function ShelfPage() {
 
         <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
           <div className="card p-6">
-            <p className="text-xs uppercase tracking-[0.18em] text-faint">Shelf stats</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-faint">
+              Shelf stats · {activeCategory.name}
+            </p>
+
             <div className="mt-4 grid gap-3">
               {[
-                { label: 'Brands ranked', value: '9' },
+                { label: 'Items ranked', value: '9' },
                 { label: 'Average shelf score', value: '1488' },
                 { label: 'Top movement', value: 'Araku Coffee ↑2' },
               ].map((item) => (
@@ -71,7 +84,8 @@ export default function ShelfPage() {
                 <p className="font-semibold text-white">Taste signal</p>
               </div>
               <p className="mt-2 text-sm leading-6 text-muted">
-                You currently skew toward premium, origin-forward brands with stronger identity and recall.
+                In this category, your taste currently leans toward premium, identity-led brands
+                with stronger recall and distinct positioning.
               </p>
             </div>
           </div>
