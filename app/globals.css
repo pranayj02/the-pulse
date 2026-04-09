@@ -120,7 +120,7 @@
       radial-gradient(circle at 15% 18%, rgba(217, 251, 99, 0.15), transparent 22%),
       radial-gradient(circle at 82% 20%, rgba(25, 215, 255, 0.14), transparent 20%),
       radial-gradient(circle at 72% 82%, rgba(103, 232, 249, 0.12), transparent 20%);
-    opacity: 0.9;
+    opacity: 0.38;
   }
 
   .card-bento:hover {
@@ -139,6 +139,7 @@
     border: 2px solid var(--color-ink);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-pop);
+    isolation: isolate;
   }
 
   .pill {
@@ -291,6 +292,7 @@
       radial-gradient(circle at 72% 18%, rgba(25, 215, 255, 0.18), transparent 20%),
       radial-gradient(circle at 84% 82%, rgba(103, 232, 249, 0.18), transparent 18%),
       linear-gradient(180deg, rgba(255,255,255,0.98), rgba(243,251,255,0.92));
+    isolation: isolate;
   }
 
   .map-grid {
@@ -335,10 +337,6 @@
   }
 
   /* Compatibility helpers */
-  .text-white {
-    color: #ffffff !important;
-  }
-
   .text-accent {
     color: var(--color-pulse-electric-deep) !important;
   }
@@ -373,6 +371,52 @@
 
   .ring-accent\/40 {
     --tw-ring-color: rgba(25, 215, 255, 0.34) !important;
+  }
+
+  /* Text safety reset */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  span,
+  li,
+  label,
+  a,
+  strong,
+  em,
+  small,
+  .section-title,
+  .heading-md,
+  .stat-value,
+  .font-clash {
+    color: var(--color-ink);
+    -webkit-text-fill-color: var(--color-ink);
+    text-shadow: none;
+    mix-blend-mode: normal;
+    opacity: 1;
+  }
+
+  .text-muted,
+  .stat-label {
+    color: var(--color-ink-muted) !important;
+    -webkit-text-fill-color: var(--color-ink-muted) !important;
+  }
+
+  .cta-primary,
+  .cta-primary * {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+  }
+
+  .cta-secondary,
+  .cta-secondary *,
+  .pill,
+  .pill * {
+    color: var(--color-ink) !important;
+    -webkit-text-fill-color: var(--color-ink) !important;
   }
 }
 
@@ -428,39 +472,5 @@
   .pill,
   .skip-link {
     border-radius: 999px;
-  }
-}
-
-  @layer components {
-  .section-title,
-  .heading-md,
-  .stat-value,
-  h1,
-  h2,
-  h3,
-  .font-clash {
-    color: var(--color-ink) !important;
-    text-shadow: none !important;
-    mix-blend-mode: normal !important;
-    opacity: 1 !important;
-  }
-
-  p,
-  li,
-  label,
-  .text-muted,
-  .stat-label {
-    color: var(--color-ink-muted);
-  }
-
-  .card::before,
-  .card-bento::before {
-    opacity: 0.38;
-  }
-
-  .card-strong,
-  .spectral-card,
-  .brand-gradient {
-    isolation: isolate;
   }
 }
