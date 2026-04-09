@@ -43,14 +43,35 @@ function buildPool(): Pair[] {
   ]
 }
 
+// ─── Card state helpers ────────────────────────────────────────────────────────
+
+function getCardClass(brand: Brand, pickedWinnerId: string | null): string {
+  if (!pickedWinnerId) return 'opacity-100 scale-100'
+  if (brand.id === pickedWinnerId) return 'opacity-100 scale-[1.02]'
+  return 'opacity-30 scale-[0.97]'
+}
+
+function getCardRingClass(brand: Brand, pickedWinnerId: string | null): string {
+  if (brand.id === pickedWinnerId) {
+    return 'ring-2 ring-[var(--color-accent)] shadow-[var(--shadow-winner)]'
+  }
+  if (pickedWinnerId) return ''
+  return 'group-hover:ring-2 group-hover:ring-[rgba(var(--color-accent-rgb),0.25)]'
+}
+
+function getCardBgClass(brand: Brand, pickedWinnerId: string | null): string {
+  if (brand.id === pickedWinnerId) {
+    return 'bg-[rgba(var(--color-accent-rgb),0.07)]'
+  }
+  return ''
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FaceoffPage() {
   const pool = useMemo(() => buildPool(), [])
   const [pairIndex, setPairIndex] = useState(0)
   const [picksToday, setPicksToday] = useState(0)
-
-  // Track which brand was picked — null means no pick yet
   const [pickedWinnerId, setPickedWinnerId] = useState<string | null>(null)
 
   const total = pool.length
@@ -58,13 +79,10 @@ export default function FaceoffPage() {
   const isLast = pairIndex >= total - 1
 
   const handlePick = (winner: Brand, loser: Brand) => {
-    // Prevent double-picks during animation
     if (pickedWinnerId) return
 
-    // 1. Immediately show winner animation
     setPickedWinnerId(winner.id)
 
-    // 2. Fire API in background — don't await
     fetch('/api/faceoff', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -83,7 +101,6 @@ export default function FaceoffPage() {
       })
       .catch(() => toast.error('Could not save face-off.'))
 
-    // 3. Advance after animation completes (600ms)
     setTimeout(() => {
       setPickedWinnerId(null)
       setPicksToday((prev) => prev + 1)
@@ -110,20 +127,26 @@ export default function FaceoffPage() {
           <div className="mx-auto max-w-2xl">
             <div className="card-strong p-8 text-center">
               <p className="text-5xl">🏆</p>
-              <h1 className="heading-md mt-4 text-white">Session complete</h1>
-              <p className="mt-3 text-base leading-7 text-muted">
+              <h1 className="heading-md mt-4" style={{ color: 'var(--color-text)' }}>
+                Session complete
+              </h1>
+              <p className="mt-3 text-base leading-7" style={{ color: 'var(--color-text-muted)' }}>
                 You made {picksToday} picks this session. Your shelf has been updated
                 and your leaderboard position may have shifted.
               </p>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 {[
                   { label: 'Picks today', value: `${picksToday}` },
-                  { label: 'XP earned', value: `+${picksToday * 2}` },
-                  { label: 'Category', value: 'Coffee' },
+                  { label: 'XP earned',   value: `+${picksToday * 2}` },
+                  { label: 'Category',    value: 'Coffee' },
                 ].map((item) => (
                   <div key={item.label} className="card p-4">
-                    <p className="text-sm text-muted">{item.label}</p>
-                    <p className="mt-2 text-xl font-semibold text-white">{item.value}</p>
+                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                      {item.label}
+                    </p>
+                    <p className="mt-2 text-xl font-semibold" style={{ color: 'var(--color-text)' }}>
+                      {item.value}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -151,37 +174,6 @@ export default function FaceoffPage() {
 
   const [brandA, brandB] = current
 
-  // ─── Card state helpers ────────────────────────────────────────────────────
-
-  const getCardClass = (brand: Brand) => {
-    if (!pickedWinnerId) {
-      // idle — normal hover behaviour
-      return 'opacity-100 scale-100'
-    }
-    if (brand.id === pickedWinnerId) {
-      // winner — green glow
-      return 'opacity-100 scale-[1.02]'
-    }
-    // loser — dim and shrink
-    return 'opacity-30 scale-[0.97]'
-  }
-
-  const getCardRingClass = (brand: Brand) => {
-    if (brand.id === pickedWinnerId) {
-      return 'ring-2 ring-emerald-400/60 shadow-[0_0_24px_rgba(52,211,153,0.2)]'
-    }
-    return pickedWinnerId
-      ? '' // loser — no ring
-      : 'group-hover:ring-2 group-hover:ring-accent/40'
-  }
-
-  const getCardBgClass = (brand: Brand) => {
-    if (brand.id === pickedWinnerId) {
-      return 'bg-emerald-500/10'
-    }
-    return ''
-  }
-
   // ─── Main face-off ─────────────────────────────────────────────────────────
 
   return (
@@ -196,8 +188,10 @@ export default function FaceoffPage() {
                 <Zap size={14} />
                 <span>Face-off · Coffee</span>
               </div>
-              <h1 className="section-title text-white">Which one wins for you?</h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
+              <h1 className="section-title" style={{ color: 'var(--color-text)' }}>
+                Which one wins for you?
+              </h1>
+              <p className="mt-3 max-w-2xl text-base leading-7" style={{ color: 'var(--color-text-muted)' }}>
                 Tap a brand to pick your preference. That single decision updates your shelf,
                 improves recommendations, and moves your leaderboard standing.
               </p>
@@ -205,10 +199,10 @@ export default function FaceoffPage() {
             <div className="flex flex-wrap gap-3">
               <div className="pill">
                 <span>Round</span>
-                <strong className="text-white">{pairIndex + 1} / {total}</strong>
+                <strong style={{ color: 'var(--color-text)' }}>{pairIndex + 1} / {total}</strong>
               </div>
               <div className="pill">
-                <Flame size={14} />
+                <Flame size={14} style={{ color: 'var(--color-accent)' }} />
                 <span>+2 XP per pick</span>
               </div>
             </div>
@@ -223,14 +217,14 @@ export default function FaceoffPage() {
               className={[
                 'group text-left transition-all duration-500',
                 'disabled:cursor-default',
-                getCardClass(brandA),
+                getCardClass(brandA, pickedWinnerId),
               ].join(' ')}
               aria-label={`Pick ${brandA.name}`}
             >
               <div className={[
                 'h-full rounded-[20px] transition-all duration-500',
-                getCardRingClass(brandA),
-                getCardBgClass(brandA),
+                getCardRingClass(brandA, pickedWinnerId),
+                getCardBgClass(brandA, pickedWinnerId),
               ].join(' ')}>
                 <BrandCard brand={brandA} />
               </div>
@@ -239,9 +233,15 @@ export default function FaceoffPage() {
             {/* VS divider */}
             <div className="flex items-center justify-center">
               <div className={[
-                'flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition-all duration-500',
+                'flex h-14 w-14 items-center justify-center rounded-full border transition-all duration-500',
                 pickedWinnerId ? 'opacity-0 scale-75' : 'opacity-100 scale-100',
-              ].join(' ')}>
+              ].join(' ')}
+                style={{
+                  borderColor: 'var(--color-border)',
+                  background: 'rgba(28,27,24,0.04)',
+                  color: 'var(--color-text)',
+                }}
+              >
                 <ArrowLeftRight size={18} />
               </div>
             </div>
@@ -254,14 +254,14 @@ export default function FaceoffPage() {
               className={[
                 'group text-left transition-all duration-500',
                 'disabled:cursor-default',
-                getCardClass(brandB),
+                getCardClass(brandB, pickedWinnerId),
               ].join(' ')}
               aria-label={`Pick ${brandB.name}`}
             >
               <div className={[
                 'h-full rounded-[20px] transition-all duration-500',
-                getCardRingClass(brandB),
-                getCardBgClass(brandB),
+                getCardRingClass(brandB, pickedWinnerId),
+                getCardBgClass(brandB, pickedWinnerId),
               ].join(' ')}>
                 <BrandCard brand={brandB} />
               </div>
@@ -286,25 +286,33 @@ export default function FaceoffPage() {
 
         <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="card p-6">
-            <p className="text-xs uppercase tracking-[0.18em] text-faint">Why this works</p>
-            <h2 className="heading-md mt-2 text-white">Binary choice beats star ratings</h2>
-            <p className="mt-3 text-sm leading-6 text-muted">
+            <p className="text-xs uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-faint)' }}>
+              Why this works
+            </p>
+            <h2 className="heading-md mt-2" style={{ color: 'var(--color-text)' }}>
+              Binary choice beats star ratings
+            </h2>
+            <p className="mt-3 text-sm leading-6" style={{ color: 'var(--color-text-muted)' }}>
               Choosing between two options produces a cleaner preference signal than assigning
               abstract numbers. It also makes the experience feel more like a game.
             </p>
           </div>
 
           <div className="card p-6">
-            <p className="text-xs uppercase tracking-[0.18em] text-faint">Session stats</p>
+            <p className="text-xs uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-faint)' }}>
+              Session stats
+            </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               {[
                 { label: 'Picks this session', value: `${picksToday}` },
-                { label: 'XP earned', value: `+${picksToday * 2}` },
-                { label: 'Next badge', value: 'Power Brewer' },
+                { label: 'XP earned',          value: `+${picksToday * 2}` },
+                { label: 'Next badge',          value: 'Power Brewer' },
               ].map((item) => (
                 <div key={item.label} className="card p-4">
-                  <p className="text-sm text-muted">{item.label}</p>
-                  <p className="mt-2 text-lg font-semibold text-white">{item.value}</p>
+                  <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{item.label}</p>
+                  <p className="mt-2 text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+                    {item.value}
+                  </p>
                 </div>
               ))}
             </div>

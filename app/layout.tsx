@@ -3,9 +3,8 @@ import type { Metadata } from 'next'
 import { Toaster } from 'react-hot-toast'
 
 export const metadata: Metadata = {
-  title: 'The Pulse',
-  description:
-    'Rank your favourite brands, build your shelf, and discover your taste graph.',
+  title: 'Chun',
+  description: 'Choose your taste. Build your shelf.',
 }
 
 export default function RootLayout({
@@ -28,10 +27,10 @@ export default function RootLayout({
           position="top-center"
           toastOptions={{
             style: {
-              background: '#171a20',
-              color: '#f3f4f6',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '16px',
+              background: 'var(--color-surface)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-card)',
             },
           }}
         />
