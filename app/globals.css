@@ -430,3 +430,37 @@
     border-radius: 999px;
   }
 }
+
+  @layer components {
+  .section-title,
+  .heading-md,
+  .stat-value,
+  h1,
+  h2,
+  h3,
+  .font-clash {
+    color: var(--color-ink) !important;
+    text-shadow: none !important;
+    mix-blend-mode: normal !important;
+    opacity: 1 !important;
+  }
+
+  p,
+  li,
+  label,
+  .text-muted,
+  .stat-label {
+    color: var(--color-ink-muted);
+  }
+
+  .card::before,
+  .card-bento::before {
+    opacity: 0.38;
+  }
+
+  .card-strong,
+  .spectral-card,
+  .brand-gradient {
+    isolation: isolate;
+  }
+}
