@@ -7,7 +7,7 @@ import { Header } from '@/components/Header'
 import { BrandCard } from '@/components/BrandCard'
 import { XPBadge } from '@/components/XPBadge'
 import { LogVisitModal } from '@/components/LogVisitModal'
-import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import { createClient } from '@/lib/supabase'
 import type { Brand } from '@/lib/types'
 
 type BadgeCard = {
@@ -97,7 +97,7 @@ export default function HomePage() {
         setLoading(true)
         setLoadError(null)
 
-        const supabase = createSupabaseBrowserClient()
+        const supabase = createClient()
         const {
           data: { user },
           error: authError,
