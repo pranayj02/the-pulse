@@ -4,109 +4,224 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── LIGHT IVORY + FIRE POP (Option A) ── */
 :root {
-  /* ─── Base (Figma-like neutral) ─── */
-  --color-bg: #f7f7f8;
-  --color-surface: #ffffff;
-  --color-surface-2: #f1f2f4;
-
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-border-strong: rgba(0, 0, 0, 0.14);
-
-  --color-text: #0f172a;
-  --color-text-muted: #6b7280;
-  --color-text-faint: #9ca3af;
-
-  /* ─── Accent system (controlled) ─── */
-  --color-accent: #6366f1; /* primary (indigo/figma-ish) */
-  --color-accent-pink: #ec4899;
-  --color-accent-blue: #3b82f6;
-  --color-accent-green: #22c55e;
-  --color-accent-yellow: #f59e0b;
-
-  /* ─── Semantic UI tokens ─── */
-  --color-success: var(--color-accent-green);
-  --color-danger: #ef4444;
-
-  /* ─── Glow system (modern feel) ─── */
-  --glow-primary: radial-gradient(circle at 50% 50%, rgba(99,102,241,0.25), transparent 60%);
-  --glow-pink:    radial-gradient(circle at 50% 50%, rgba(236,72,153,0.25), transparent 60%);
-  --glow-blue:    radial-gradient(circle at 50% 50%, rgba(59,130,246,0.25), transparent 60%);
-  --glow-green:   radial-gradient(circle at 50% 50%, rgba(34,197,94,0.25), transparent 60%);
-
-  /* ─── Winner state (replaces emerald) ─── */
-  --color-winner-ring: rgba(99,102,241,0.45);
-  --color-winner-bg: rgba(99,102,241,0.08);
-  --color-winner-glow: rgba(99,102,241,0.18);
-
-  /* ─── Toast + skip link ─── */
-  --color-toast-bg: #ffffff;
-  --color-toast-text: #0f172a;
-
-  --color-skip-link-bg: #111827;
-  --color-skip-link-text: #ffffff;
-
-  /* ─── Misc ─── */
-  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.08);
-  --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.12);
-
+  /* Surfaces — warm ivory foundation */
+  --color-bg: #F8F7F2;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F2F1EC;
+  --color-border: rgba(28, 27, 24, 0.08);
+  --color-border-strong: rgba(28, 27, 24, 0.12);
+  
+  /* Text — warm near-black */
+  --color-text: #1C1B18;
+  --color-text-muted: #6B6A66;
+  --color-text-faint: #A8A7A3;
+  
+  /* Fire Pop — Option A (Orange → Magenta → Deep Purple) */
+  --color-accent: #E8305A;        /* Vivid magenta — primary CTA, winner */
+  --color-accent-rgb: 232, 48, 90;
+  --color-accent-2: #FF7A30;      /* Orange — secondary energy */
+  --color-accent-2-rgb: 255, 122, 48;
+  --color-accent-3: #7A2EE8;      /* Deep violet — gradient tail */
+  --color-accent-3-rgb: 122, 46, 232;
+  
+  /* Success/Error — semantic */
+  --color-success: #10B981;
+  --color-danger: #EF4444;
+  
+  /* Shadows — warm, soft */
+  --shadow-soft: 0 10px 30px rgba(28, 27, 24, 0.08);
+  --shadow-card: 0 16px 40px rgba(28, 27, 24, 0.12);
+  --shadow-winner: 0 0 24px rgba(var(--color-accent-rgb), 0.3);
+  
+  /* Radius */
   --radius-card: 20px;
   --radius-pill: 999px;
   --max-width: 1240px;
 }
 
-/* ─── Base styles ─── */
+* { box-sizing: border-box; }
 
-* {
-  box-sizing: border-box;
-}
+html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  background: var(--color-bg);
+  background:
+    radial-gradient(circle at top, rgba(var(--color-accent-rgb), 0.06), transparent 28%),
+    linear-gradient(180deg, var(--color-bg) 0%, #F3F2EE 100%);
   color: var(--color-text);
   font-family: 'Satoshi', system-ui, sans-serif;
   min-height: 100vh;
 }
 
+a { color: inherit; text-decoration: none; }
+button, input, textarea, select { font: inherit; }
+
 ::selection {
-  background: rgba(99, 102, 241, 0.2);
-  color: black;
+  background: rgba(var(--color-accent-rgb), 0.2);
+  color: var(--color-text);
 }
 
-/* ─── Skip link FIXED ─── */
-.skip-link:focus {
-  background: var(--color-skip-link-bg);
-  color: var(--color-skip-link-text);
+.container {
+  width: min(100% - 32px, var(--max-width));
+  margin-inline: auto;
 }
 
-/* ─── Reusable UI ─── */
+.page-shell {
+  min-height: 100vh;
+  padding: 32px 0 56px;
+}
 
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-soft);
   border-radius: var(--radius-card);
+  backdrop-filter: blur(10px);
 }
 
 .card-strong {
-  background: var(--color-surface);
+  background: var(--color-surface-2);
   border: 1px solid var(--color-border-strong);
   box-shadow: var(--shadow-card);
   border-radius: var(--radius-card);
+  backdrop-filter: blur(14px);
 }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  background: rgba(28, 27, 24, 0.03);
+}
+
+.section-title {
+  font-family: 'Clash Display', system-ui, sans-serif;
+  font-size: clamp(28px, 4vw, 52px);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.heading-md {
+  font-family: 'Clash Display', system-ui, sans-serif;
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.text-muted { color: var(--color-text-muted); }
+.text-faint { color: var(--color-text-faint); }
 
 .cta-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   background: var(--color-accent);
   color: white;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 13px 18px;
+  font-weight: 700;
+  transition: transform 180ms ease, opacity 180ms ease;
+  cursor: pointer;
 }
 
+.cta-primary:hover { transform: translateY(-1px); }
+
 .cta-secondary {
-  background: var(--color-surface-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(28, 27, 24, 0.04);
+  color: var(--color-text);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 13px 18px;
+  font-weight: 600;
+  transition: transform 180ms ease, border-color 180ms ease;
+  cursor: pointer;
+}
+
+.cta-secondary:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-border-strong);
+}
+
+.input {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: rgba(28, 27, 24, 0.02);
+  color: var(--color-text);
+  padding: 14px 16px;
+  outline: none;
 }
 
 .input:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 4px rgba(99,102,241,0.12);
+  border-color: rgba(var(--color-accent-rgb), 0.4);
+  box-shadow: 0 0 0 4px rgba(var(--color-accent-rgb), 0.1);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-value {
+  font-family: 'Clash Display', system-ui, sans-serif;
+  font-size: clamp(24px, 3vw, 40px);
+  line-height: 1;
+}
+
+.stat-label {
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.brand-gradient {
+  background:
+    radial-gradient(circle at top left, rgba(var(--color-accent-rgb), 0.12), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(var(--color-accent-2-rgb), 0.08), transparent 26%),
+    linear-gradient(180deg, rgba(28, 27, 24, 0.02), rgba(28, 27, 24, 0.01));
+}
+
+.map-grid {
+  position: relative;
+  overflow: hidden;
+  min-height: 360px;
+  border-radius: 24px;
+  border: 1px solid var(--color-border);
+  background:
+    linear-gradient(rgba(28, 27, 24, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 27, 24, 0.02) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(28, 27, 24, 0.01), rgba(28, 27, 24, 0.005));
+  background-size: 28px 28px, 28px 28px, auto;
+}
+
+.map-pin {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 6px rgba(var(--color-accent-rgb), 0.15);
+}
+
+.bottom-nav-space { padding-bottom: 88px; }
+
+@media (max-width: 768px) {
+  .page-shell { padding-top: 20px; }
+  .container { width: min(100% - 20px, var(--max-width)); }
+  .card, .card-strong { border-radius: 18px; }
 }
