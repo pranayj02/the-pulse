@@ -5,153 +5,227 @@
 @tailwind utilities;
 
 :root {
-  /* The "Pop" Palette: High contrast white base with ink accents */
+  /* --- BASE PALETTE: Crisp & Breathable --- */
   --color-bg: #ffffff;
-  --color-surface: #f8fafc;
-  --color-ink: #0f172a;
-  --color-ink-muted: #64748b;
+  --color-surface: #fcfcfd;
+  --color-surface-2: #f2f4f7;
+  --color-border: rgba(15, 23, 42, 0.08);
+  --color-border-strong: rgba(15, 23, 42, 1);
+
+  /* --- TEXT: High-Contrast Ink --- */
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-text-faint: #94a3b8;
+  --color-inverse: #ffffff;
+
+  /* --- INFRARED SPECTRAL BRAND (Inspiration: reference image) --- */
+  --color-infrared-deep: #E11D48;   /* Deep Rose */
+  --color-infrared-hot: #F43F5E;    /* Signal Pink */
+  --color-infrared-warm: #FB923C;   /* Heat Orange */
+  --color-infrared-glow: #FCD34D;   /* Soft Amber */
+  --color-accent: var(--color-infrared-hot);
+  --color-accent-rgb: 244, 63, 94;
+
+  /* --- SECONDARY ACCENTS (For Balance) --- */
+  --color-lime: #BEF264;
+  --color-cyan: #22D3EE;
+
+  /* --- TACTILE SHADOWS --- */
+  --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.04);
+  --shadow-pop: 6px 6px 0px 0px var(--color-border-strong);
+  --shadow-lift: 0 20px 48px rgba(15, 23, 42, 0.08);
+  --shadow-infrared: 0 16px 36px rgba(var(--color-accent-rgb), 0.15);
+
+  /* --- GRADIENTS --- */
+  --gradient-infrared: linear-gradient(135deg, 
+    var(--color-infrared-deep) 0%, 
+    var(--color-infrared-hot) 45%, 
+    var(--color-infrared-warm) 100%);
   
-  /* Spectral Accents: Saturated brand colors for gamification [cite: 59, 60] */
-  --color-pulse-violet: #7C3AED;
-  --color-pulse-pink: #F43F5E;
-  --color-pulse-orange: #FB923C;
-  --color-pulse-lime: #BEF264;
-  --color-pulse-cyan: #22D3EE;
+  --gradient-warm-glow: radial-gradient(circle at center, 
+    rgba(251, 146, 60, 0.15) 0%, 
+    transparent 70%);
 
-  /* Tactile Shadows: High-end playful depth */
-  --shadow-flat: 0 4px 0 0 rgba(15, 23, 42, 0.05);
-  --shadow-pop: 0 8px 0 0 rgba(15, 23, 42, 1);
-  --shadow-ghost: 0 20px 40px -12px rgba(15, 23, 42, 0.1);
-
-  /* Radius: Exaggerated for the "Instagram-meets-Notion" feel */
+  /* --- RADIUS --- */
   --radius-xl: 32px;
   --radius-lg: 24px;
   --radius-md: 16px;
+  --radius-pill: 999px;
   --max-width: 1240px;
 }
 
-@layer base {
-  body {
-    @apply bg-[var(--color-bg)] text-[var(--color-ink)] selection:bg-[var(--color-pulse-lime)] selection:text-[var(--color-ink)];
-    font-family: 'Satoshi', sans-serif;
-    /* Subtle mesh background to keep it from feeling clinical */
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(190, 242, 100, 0.12) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(34, 211, 238, 0.08) 0px, transparent 50%),
-      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%230f172a' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-    min-height: 100vh;
-  }
+/* --- BASE STYLES --- */
+* { box-sizing: border-box; }
 
-  h1, h2, h3, .font-clash {
-    @apply font-bold tracking-tight;
-    font-family: 'Clash Display', sans-serif;
-    letter-spacing: -0.03em;
-  }
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  background-image: 
+    var(--gradient-warm-glow),
+    url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%230f172a' fill-opacity='0.02'%3E%3Cpath d='M0 38.59V40h1.41l1.1-1.11L1.41 37.78 0 38.59zM0 1.41V0h1.41L0 1.41zM38.59 0H40v1.41L38.59 0zm1.41 38.59V40h-1.41L40 38.59zM19.3 20l-1.41-1.41L16.48 20l1.41 1.41L19.3 20z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  color: var(--color-text);
+  font-family: 'Satoshi', system-ui, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
-@layer components {
-  /* --- REQUIRED ARCHITECTURAL CLASSES  --- */
-
-  /* Root Layout Components */
-  .container {
-    @apply w-[min(100%-32px,var(--max-width))] mx-auto;
-  }
-
-  .page-shell {
-    @apply min-h-screen pt-8 pb-20;
-  }
-
-  .skip-link {
-    @apply absolute -top-16 left-4 z-[100] bg-[var(--color-ink)] text-white px-4 py-2 rounded-full transition-all focus:top-4;
-  }
-
-  /* Utility Classes for Cards and UI */
-  .card, .card-bento {
-    @apply bg-white border-2 border-[var(--color-ink)] transition-all duration-200 overflow-hidden relative;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-pop);
-  }
-
-  .card-bento:hover {
-    @apply -translate-x-1 -translate-y-1;
-    box-shadow: 12px 12px 0 0 rgba(15, 23, 42, 1);
-  }
-
-  .pill {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-full border-2 border-[var(--color-ink)] bg-white font-bold text-xs uppercase tracking-wider transition-all hover:bg-[var(--color-pulse-lime)];
-  }
-
-  /* Form & Input Elements */
-  .input {
-    @apply w-full px-5 py-4 bg-white border-2 border-[var(--color-ink)] rounded-[var(--radius-md)] outline-none transition-all placeholder:text-slate-400 focus:shadow-[4px_4px_0_0_rgba(15,23,42,1)];
-  }
-
-  /* Action Buttons (CTAs) */
-  .cta-primary {
-    @apply relative inline-flex items-center justify-center gap-2 px-8 py-4 bg-[var(--color-pulse-violet)] text-white font-bold rounded-full border-2 border-[var(--color-ink)] transition-all active:translate-y-1 active:shadow-none hover:-translate-y-1;
-    box-shadow: var(--shadow-pop);
-  }
-
-  .cta-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-[var(--color-ink)] font-bold rounded-full border-2 border-[var(--color-ink)] transition-all hover:bg-slate-50 active:translate-y-1;
-    box-shadow: 4px 4px 0 0 rgba(15, 23, 42, 1);
-  }
-
-  /* --- PRODUCT-SPECIFIC LOGIC CLASSES --- */
-
-  /* Face-Off Engine [cite: 33, 127] */
-  .btn-faceoff {
-    @apply flex flex-col items-center justify-center p-10 w-full bg-white border-4 border-[var(--color-ink)] rounded-[var(--radius-xl)] transition-all active:scale-95 active:bg-[var(--color-pulse-lime)];
-    box-shadow: var(--shadow-pop);
-  }
-
-  /* XP and Gamification [cite: 59, 135] */
-  .xp-track {
-    @apply h-5 w-full bg-slate-100 border-2 border-[var(--color-ink)] rounded-full overflow-hidden;
-  }
-
-  .xp-bar {
-    @apply h-full bg-[var(--color-pulse-lime)] border-r-2 border-[var(--color-ink)];
-    background-image: linear-gradient(45deg, rgba(255,255,255,0.3) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.3) 75%, transparent 75%, transparent);
-    background-size: 24px 24px;
-    animation: stripe-flow 1.5s linear infinite;
-  }
-
-  /* Map Reskin  */
-  /* This filter creates a "Dark Mode" effect on standard OSM tiles */
-  .leaflet-layer, .leaflet-control-zoom-in, .leaflet-control-zoom-out {
-    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
-  }
-
-  .leaflet-container {
-    @apply rounded-[var(--radius-xl)] border-4 border-[var(--color-ink)] !bg-[var(--color-ink)];
-  }
+/* --- ARCHITECTURAL UTILITIES --- */
+.container {
+  width: min(100% - 32px, var(--max-width));
+  margin-inline: auto;
 }
 
-/* Animations for Optimistic UI and Gamification [cite: 37, 131] */
-@keyframes stripe-flow {
+.page-shell {
+  min-height: 100vh;
+  padding: 32px 0 88px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -60px;
+  z-index: 100;
+  background: var(--color-text);
+  color: white;
+  padding: 12px 20px;
+  border-radius: var(--radius-pill);
+  transition: top 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.skip-link:focus { top: 16px; }
+
+/* --- TYPOGRAPHY --- */
+.section-title {
+  font-family: 'Clash Display', sans-serif;
+  font-size: clamp(32px, 5vw, 64px);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  color: var(--color-text);
+}
+
+.heading-md {
+  font-family: 'Clash Display', sans-serif;
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* --- COMPONENT CLASSES --- */
+
+/* Bento-Box Cards */
+.card {
+  @apply bg-white border-2 border-[var(--color-text)] transition-all duration-300;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 10px 10px 0px 0px var(--color-text);
+}
+
+.card-strong {
+  @apply bg-white border-4 border-[var(--color-text)] transition-all;
+  border-radius: var(--radius-xl);
+  box-shadow: 12px 12px 0px 0px var(--color-text);
+}
+
+/* The "Pulse" Buttons */
+.cta-primary {
+  @apply flex items-center justify-center gap-3 px-8 py-4 font-bold text-white transition-all cursor-pointer border-2 border-[var(--color-text)];
+  background: var(--gradient-infrared);
+  border-radius: var(--radius-pill);
+  box-shadow: 4px 4px 0px 0px var(--color-text);
+}
+
+.cta-primary:hover {
+  @apply -translate-y-1;
+  box-shadow: 8px 8px 0px 0px var(--color-text);
+}
+
+.cta-primary:active {
+  @apply translate-y-1 translate-x-1 shadow-none;
+}
+
+.cta-secondary {
+  @apply flex items-center justify-center gap-2 px-8 py-4 font-bold bg-white text-[var(--color-text)] border-2 border-[var(--color-text)] transition-all;
+  border-radius: var(--radius-pill);
+  box-shadow: 4px 4px 0px 0px var(--color-text);
+}
+
+/* Face-Off Engine Specifics */
+.btn-faceoff {
+  @apply flex flex-col items-center justify-center p-12 w-full bg-white border-4 border-[var(--color-text)] transition-all;
+  border-radius: var(--radius-xl);
+  box-shadow: 12px 12px 0px 0px var(--color-text);
+}
+
+.btn-faceoff:hover {
+  @apply -translate-y-2;
+  box-shadow: 16px 16px 0px 0px var(--color-infrared-hot);
+}
+
+/* Form Inputs */
+.input {
+  @apply w-full px-6 py-4 bg-white border-2 border-[var(--color-text)] rounded-[var(--radius-md)] outline-none transition-all;
+  box-shadow: 4px 4px 0px 0px rgba(15, 23, 42, 0.1);
+}
+
+.input:focus {
+  @apply border-[var(--color-infrared-hot)];
+  box-shadow: 4px 4px 0px 0px var(--color-infrared-hot);
+}
+
+/* XP & Gamification */
+.xp-track {
+  @apply h-6 w-full bg-slate-100 border-2 border-[var(--color-text)] rounded-full overflow-hidden;
+}
+
+.xp-bar {
+  @apply h-full bg-[var(--color-lime)] border-r-2 border-[var(--color-text)];
+  background-image: linear-gradient(45deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.05) 75%, transparent 75%, transparent);
+  background-size: 20px 20px;
+  animation: move-stripes 2s linear infinite;
+}
+
+/* Map Dark Reskin [cite: 56, 171] */
+.leaflet-container {
+  @apply rounded-[var(--radius-xl)] border-4 border-[var(--color-text)] overflow-hidden !bg-[var(--color-text)];
+}
+
+.leaflet-layer {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
+/* --- ANIMATIONS --- */
+@keyframes move-stripes {
   from { background-position: 0 0; }
-  to { background-position: 48px 0; }
+  to { background-position: 40px 0; }
 }
 
-.animate-pop-in {
-  animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+.fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
 }
 
-@keyframes pop-in {
-  0% { transform: scale(0.9); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 10px;
+/* Custom Selection Glow */
+::selection {
+  background: var(--color-infrared-hot);
+  color: white;
 }
-::-webkit-scrollbar-track {
-  background: white;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-ink);
-  border: 2px solid white;
-  border-radius: 10px;
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+  .card, .card-strong { border-radius: var(--radius-md); }
+  .btn-faceoff { padding: 40px 20px; }
+  .page-shell { padding-bottom: 100px; }
 }
