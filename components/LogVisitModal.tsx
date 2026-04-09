@@ -12,7 +12,7 @@ import {
   Check,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import { createClient } from '@/lib/supabase'
 
 type SearchCafeResult = {
   id?: string | null
@@ -66,7 +66,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
       try {
         setBrandsLoading(true)
 
-        const supabase = createSupabaseBrowserClient()
+        const supabase = createClient()
 
         const [cafesRes, brandsRes] = await Promise.all([
           fetch('/api/cafes/search?q=').then(async (r) => {
