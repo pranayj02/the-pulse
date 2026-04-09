@@ -9,60 +9,60 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // FIX: Mapping 'text' to the 'ink' variables in your CSS
         bg: 'var(--color-bg)',
         surface: 'var(--color-surface)',
-        surface2: 'var(--color-surface-2)',
-        surface3: 'var(--color-surface-3)',
-        border: 'var(--color-border)',
-        text: 'var(--color-text)',
-        muted: 'var(--color-text-muted)',
-        faint: 'var(--color-text-faint)',
-        accent: 'var(--color-accent)',
-        signal: 'var(--color-signal)',
-        heat: 'var(--color-heat)',
-        glow: 'var(--color-glow)',
-        lime: 'var(--color-lime)',
-        success: 'var(--color-success)',
-        danger: 'var(--color-danger)',
+        surface2: 'var(--color-surface-soft)',
+        border: 'var(--color-ink)', // High contrast borders
+        
+        // TYPOGRAPHY FIX
+        // This ensures text-text or text-muted uses the dark slate 'ink'
+        text: 'var(--color-ink)', 
+        muted: 'var(--color-ink-muted)',
+        ink: 'var(--color-ink)',
+        'ink-muted': 'var(--color-ink-muted)',
+
+        // THE PULSE SPECTRUM
+        electric: 'var(--color-pulse-electric)',
+        hot: 'var(--color-pulse-hot)',
+        cyan: 'var(--color-pulse-cyan)',
+        lime: 'var(--color-pulse-lime)',
+        blue: 'var(--color-pulse-blue)',
+        accent: 'var(--color-pulse-hot)', // Infrared fallback
       },
       fontFamily: {
+        // Updated to match your Fontshare imports
+        clash: ['Clash Display', 'system-ui', 'sans-serif'],
+        satoshi: ['Satoshi', 'system-ui', 'sans-serif'],
         display: ['Clash Display', 'system-ui', 'sans-serif'],
         body: ['Satoshi', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
+        xl: '30px',
+        lg: '22px',
+        md: '16px',
         card: '22px',
-        'card-tight': '18px',
         pill: '999px',
       },
       boxShadow: {
-        soft: 'var(--shadow-soft)',
-        card: 'var(--shadow-card)',
-        lift: 'var(--shadow-lift)',
-        winner: 'var(--shadow-winner)',
-        glow: 'var(--shadow-glow)',
-      },
-      backgroundImage: {
-        infrared: 'var(--gradient-infrared)',
-        'cool-burn': 'var(--gradient-cool-burn)',
-        'fresh-signal': 'var(--gradient-fresh-signal)',
+        // Hard tactile shadows for the "Notion" look
+        pop: '0 8px 0 0 #0f172a',
+        flat: '0 4px 0 0 rgba(15, 23, 42, 0.08)',
+        card: '0 8px 0 0 #0f172a',
+        lift: '0 20px 40px -12px rgba(15, 23, 42, 0.12)',
       },
       animation: {
-        'fade-up': 'fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-        pop: 'pop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-        shimmer: 'shimmer 1.5s ease-in-out infinite',
+        'stripe-flow': 'stripe-flow 1.5s linear infinite',
+        'pop-in': 'pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
       },
       keyframes: {
-        fadeUp: {
-          '0%': { opacity: '0', transform: 'translateY(16px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+        'stripe-flow': {
+          'from': { backgroundPosition: '0 0' },
+          'to': { backgroundPosition: '48px 0' },
         },
-        pop: {
-          '0%': { transform: 'scale(0.95)', opacity: '0' },
+        'pop-in': {
+          '0%': { transform: 'scale(0.9)', opacity: '0' },
           '100%': { transform: 'scale(1)', opacity: '1' },
-        },
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
         },
       },
     },
