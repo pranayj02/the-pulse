@@ -33,14 +33,17 @@ function normalizeText(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
 }
 
+function escapeIlike(value: string) {
+  return value.replace(/[%_,]/g, '').trim()
+}
+
 function dedupeCafeResults(items: CafeSearchResult[]) {
   const seen = new Set<string>()
 
   return items.filter((item) => {
-    const key =
-      item.osm_place_id
-        ? `osm:${item.osm_place_id}`
-        : `txt:${normalizeText(item.name)}|${normalizeText(item.address)}`
+    const key = item.osm_place_id
+      ? `osm:${item.osm_place_id}`
+      : `txt:${normalizeText(item.name)}|${normalizeText(item.address)}`
 
     if (seen.has(key)) return false
     seen.add(key)
@@ -60,10 +63,24 @@ function extractCity(place: NominatimPlace) {
   )
 }
 
+function mapDbCafe(cafe: Database['public']['Tables']['cafes']['Row']): CafeSearchResult {
+  return {
+    id: cafe.id,
+    osm_place_id: cafe.osm_place_id ?? null,
+    name: cafe.name,
+    city: cafe.city ?? null,
+    address: cafe.address ?? null,
+    lat: cafe.lat ?? null,
+    lng: cafe.lng ?? null,
+    source: 'db',
+  }
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const q = searchParams.get('q')?.trim() ?? ''
+    const rawQ = searchParams.get('q')?.trim() ?? ''
+    const q = escapeIlike(rawQ)
 
     const supabase =
       (await createSupabaseServerClient()) as unknown as SupabaseClient<Database>
@@ -81,49 +98,92 @@ export async function GET(request: Request) {
         .eq('id', user.id)
         .maybeSingle()
 
+      if (profileRes.error) {
+        return NextResponse.json({ error: profileRes.error.message }, { status: 500 })
+      }
+
       userCity = profileRes.data?.city ?? null
     }
 
-    let dbQuery = supabase
-      .from('cafes')
-      .select('id, osm_place_id, name, city, address, lat, lng')
-      .limit(q.length > 0 ? 8 : 12)
+    let dbResults: CafeSearchResult[] = []
 
-    if (q.length > 0) {
-      dbQuery = dbQuery.or(
-        `name.ilike.%${q}%,city.ilike.%${q}%,address.ilike.%${q}%`
+    if (q.length === 0) {
+      if (userCity) {
+        const cityRes = await supabase
+          .from('cafes')
+          .select('id, osm_place_id, name, city, address, lat, lng')
+          .eq('city', userCity)
+          .order('name', { ascending: true })
+          .limit(12)
+
+        if (cityRes.error) {
+          return NextResponse.json({ error: cityRes.error.message }, { status: 500 })
+        }
+
+        dbResults = (cityRes.data ?? []).map(mapDbCafe)
+      } else {
+        const defaultRes = await supabase
+          .from('cafes')
+          .select('id, osm_place_id, name, city, address, lat, lng')
+          .order('name', { ascending: true })
+          .limit(12)
+
+        if (defaultRes.error) {
+          return NextResponse.json({ error: defaultRes.error.message }, { status: 500 })
+        }
+
+        dbResults = (defaultRes.data ?? []).map(mapDbCafe)
+      }
+
+      return NextResponse.json({ cafes: dedupeCafeResults(dbResults) })
+    }
+
+    const dbQueries: Array<PromiseLike<{
+      data: Database['public']['Tables']['cafes']['Row'][] | null
+      error: { message: string } | null
+    }>> = []
+
+    if (userCity) {
+      dbQueries.push(
+        supabase
+          .from('cafes')
+          .select('id, osm_place_id, name, city, address, lat, lng')
+          .eq('city', userCity)
+          .or(`name.ilike.%${q}%,address.ilike.%${q}%`)
+          .order('name', { ascending: true })
+          .limit(8)
       )
     }
 
-    if (userCity) {
-      dbQuery = dbQuery.order('name', { ascending: true })
+    dbQueries.push(
+      supabase
+        .from('cafes')
+        .select('id, osm_place_id, name, city, address, lat, lng')
+        .or(`name.ilike.%${q}%,city.ilike.%${q}%,address.ilike.%${q}%`)
+        .order('name', { ascending: true })
+        .limit(8)
+    )
+
+    const dbResponses = await Promise.all(dbQueries)
+
+    for (const res of dbResponses) {
+      if (res.error) {
+        return NextResponse.json({ error: res.error.message }, { status: 500 })
+      }
     }
 
-    const { data: dbCafes, error: dbError } = await dbQuery
+    dbResults = dedupeCafeResults(
+      dbResponses.flatMap((res) => (res.data ?? []).map(mapDbCafe))
+    )
 
-    if (dbError) {
-      return NextResponse.json({ error: dbError.message }, { status: 500 })
+    // Protect the public Nominatim endpoint:
+    // - don't search it for very short queries
+    // - don't call it if DB already has enough results
+    if (q.length < 3 || dbResults.length >= 6) {
+      return NextResponse.json({ cafes: dbResults.slice(0, 12) })
     }
 
-    const normalizedDbResults: CafeSearchResult[] = (dbCafes ?? []).map((cafe) => ({
-      id: cafe.id,
-      osm_place_id: cafe.osm_place_id ?? null,
-      name: cafe.name,
-      city: cafe.city ?? null,
-      address: cafe.address ?? null,
-      lat: cafe.lat ?? null,
-      lng: cafe.lng ?? null,
-      source: 'db',
-    }))
-
-    if (q.length < 2) {
-      return NextResponse.json({
-        cafes: dedupeCafeResults(normalizedDbResults),
-      })
-    }
-
-    const nominatimQuery = userCity ? `${q} cafe ${userCity}` : `${q} cafe`
-
+    const nominatimQuery = userCity ? `${rawQ} cafe ${userCity}` : `${rawQ} cafe`
     let nominatimResults: CafeSearchResult[] = []
 
     try {
@@ -131,12 +191,16 @@ export async function GET(request: Request) {
       nominatimUrl.searchParams.set('q', nominatimQuery)
       nominatimUrl.searchParams.set('format', 'jsonv2')
       nominatimUrl.searchParams.set('addressdetails', '1')
-      nominatimUrl.searchParams.set('limit', '8')
+      nominatimUrl.searchParams.set('limit', '6')
+
+      const userAgent =
+        process.env.NOMINATIM_USER_AGENT ||
+        'Chun/1.0 (pranayjainsecond@gmail.com)'
 
       const nominatimRes = await fetch(nominatimUrl.toString(), {
         headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Chun/1.0',
+          Accept: 'application/json',
+          'User-Agent': userAgent,
         },
         cache: 'no-store',
       })
@@ -159,10 +223,7 @@ export async function GET(request: Request) {
       console.error('Nominatim lookup failed:', error)
     }
 
-    const cafes = dedupeCafeResults([
-      ...normalizedDbResults,
-      ...nominatimResults,
-    ]).slice(0, 12)
+    const cafes = dedupeCafeResults([...dbResults, ...nominatimResults]).slice(0, 12)
 
     return NextResponse.json({ cafes })
   } catch (error) {
