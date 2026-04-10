@@ -1,52 +1,140 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { Compass, MapPin, Navigation, Sparkles } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { BrandCard } from '@/components/BrandCard'
 import { LogVisitModal } from '@/components/LogVisitModal'
-import { SEED_COFFEE_BRANDS } from '@/lib/constants'
+import { createClient } from '@/lib/supabase'
 import type { Brand } from '@/lib/types'
-import dynamic from 'next/dynamic'
 
 const Map = dynamic(() => import('@/components/Map'), { ssr: false })
 
-const activeCategory = { slug: 'coffee', name: 'Coffee' }
+const activeCategory = { name: 'Coffee' }
 
-const discoverBrands: Brand[] = SEED_COFFEE_BRANDS.slice(6, 10).map((brand, index) => ({
-  id: `discover-brand-${index + 1}`,
-  category_id: activeCategory.slug,
-  name: brand.name,
-  slug: brand.name.toLowerCase().replace(/\s+/g, '-'),
-  logo_url: null,
-  tagline: brand.tagline,
-  description: null,
-  price_range: brand.price_range as Brand['price_range'],
-  origin_city: brand.origin_city,
-  origin_country: 'India',
-  website_url: null,
-  is_active: true,
-  created_at: new Date().toISOString(),
-}))
-
-const places = [
-  { id: '1', name: 'Blue Tokai – Bandra',    lat: 19.0596, lng: 72.8295 },
-  { id: '2', name: 'Subko – Lower Parel',    lat: 18.9988, lng: 72.8258 },
-  { id: '3', name: 'Third Wave – Powai',     lat: 19.1176, lng: 72.9060 },
-  { id: '4', name: 'Kala Ghoda Café – Fort', lat: 18.9338, lng: 72.8354 },
-]
+type MapPlace = {
+  id: string
+  name: string
+  lat: number
+  lng: number
+  city?: string | null
+  address?: string | null
+}
 
 export default function DiscoverPage() {
+  const supabase = useMemo(() => createClient(), [])
   const [showVisitModal, setShowVisitModal] = useState(false)
+
+  const [city, setCity] = useState('Your city')
+  const [places, setPlaces] = useState<MapPlace[]>([])
+  const [discoverBrands, setDiscoverBrands] = useState<Brand[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadDiscover() {
+      try {
+        setLoading(true)
+        setLoadError(null)
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser()
+
+        if (authError) throw authError
+
+        let userCity: string | null = null
+
+        if (user?.id) {
+          const profileRes = await supabase
+            .from('profiles')
+            .select('city')
+            .eq('id', user.id)
+            .maybeSingle()
+
+          if (profileRes.error) throw profileRes.error
+          userCity = profileRes.data?.city ?? null
+        }
+
+        let cafesQuery = supabase
+          .from('cafes')
+          .select('id, name, lat, lng, city, address')
+          .order('name', { ascending: true })
+          .limit(100)
+
+        if (userCity) {
+          cafesQuery = cafesQuery.eq('city', userCity)
+        }
+
+        const [cafesRes, brandsRes] = await Promise.all([
+          cafesQuery,
+          supabase
+            .from('brands')
+            .select('*')
+            .eq('is_active', true)
+            .order('name', { ascending: true })
+            .limit(4),
+        ])
+
+        if (cafesRes.error) throw cafesRes.error
+        if (brandsRes.error) throw brandsRes.error
+        if (!mounted) return
+
+        const mappedPlaces: MapPlace[] = (cafesRes.data ?? [])
+          .filter(
+            (cafe) =>
+              typeof cafe.lat === 'number' && Number.isFinite(cafe.lat) &&
+              typeof cafe.lng === 'number' && Number.isFinite(cafe.lng)
+          )
+          .map((cafe) => ({
+            id: cafe.id,
+            name: cafe.name,
+            lat: cafe.lat,
+            lng: cafe.lng,
+            city: cafe.city ?? null,
+            address: cafe.address ?? null,
+          }))
+
+        setPlaces(mappedPlaces)
+        setCity(userCity || mappedPlaces[0]?.city || 'Your city')
+        setDiscoverBrands((brandsRes.data ?? []) as Brand[])
+      } catch (error) {
+        console.error('Failed to load discover page data:', error)
+        if (mounted) {
+          setLoadError('Could not load live discovery data right now.')
+          setPlaces([])
+          setDiscoverBrands([])
+        }
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+
+    loadDiscover()
+
+    return () => {
+      mounted = false
+    }
+  }, [supabase])
+
+  const nearbyPlaces = places.slice(0, 8)
 
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
       <Header active="discover" />
 
       <div className="container space-y-6">
-        <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        {loadError && (
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+            {loadError}
+          </div>
+        )}
 
-          {/* ── Left: Discovery info ── */}
+        <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
           <div className="card-strong p-6 md:p-8">
             <div className="pill mb-4">
               <Compass size={14} />
@@ -58,57 +146,86 @@ export default function DiscoverPage() {
             </h1>
 
             <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
-              Discovery combines brand similarity, social proof, and map activity to surface the
-              next item or place worth trying inside your active category.
+              Discovery becomes more useful once your city graph is live. Use the
+              map to find cafés, log visits, and push more real-world taste data
+              back into Chun.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm text-muted">Recommended next</p>
-                <p className="mt-2 text-lg font-semibold text-white">Corridor Seven</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm text-muted">Why this fits</p>
+                <p className="text-sm text-muted">City coverage</p>
                 <p className="mt-2 text-lg font-semibold text-white">
-                  People who rank Blue Tokai highly also rank it highly
+                  {loading ? 'Loading…' : `${places.length} cafés in ${city}`}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm text-muted">Map status</p>
+                <p className="mt-2 text-lg font-semibold text-white">
+                  {loading
+                    ? 'Syncing live data'
+                    : places.length > 0
+                      ? 'Live from database'
+                      : 'No cafés loaded yet'}
                 </p>
               </div>
             </div>
 
-            {/* ── Cafe list with Log Visit ── */}
             <div className="mt-6">
               <p className="mb-3 text-xs uppercase tracking-[0.18em] text-faint">
                 Nearby cafés
               </p>
+
               <div className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10">
-                {places.map((place) => (
-                  <div
-                    key={place.id}
-                    className="flex items-center justify-between px-4 py-3 transition hover:bg-white/5"
-                  >
-                    <div className="flex items-center gap-3">
-                      <MapPin size={14} className="shrink-0 text-accent" />
-                      <p className="text-sm font-medium text-white">{place.name}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowVisitModal(true)}
-                      className="pill text-xs transition hover:border-accent/40 hover:text-white"
-                    >
-                      Log visit
-                    </button>
+                {loading ? (
+                  <div className="px-4 py-6 text-sm text-muted">
+                    Loading cafés...
                   </div>
-                ))}
+                ) : nearbyPlaces.length > 0 ? (
+                  nearbyPlaces.map((place) => (
+                    <div
+                      key={place.id}
+                      className="flex items-center justify-between px-4 py-3 transition hover:bg-white/5"
+                    >
+                      <div className="min-w-0 flex items-center gap-3">
+                        <MapPin size={14} className="shrink-0 text-accent" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-white">
+                            {place.name}
+                          </p>
+                          <p className="truncate text-xs text-muted">
+                            {[place.city, place.address].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowVisitModal(true)}
+                        className="pill text-xs transition hover:border-accent/40 hover:text-white"
+                      >
+                        Log visit
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-4 py-6 text-sm text-muted">
+                    No cafés found for this city yet.
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* ── Right: Map ── */}
           <div className="card p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-faint">City map</p>
-                <h2 className="heading-md mt-2 text-white">Mumbai discovery layer</h2>
+                <p className="text-xs uppercase tracking-[0.18em] text-faint">
+                  City map
+                </p>
+                <h2 className="heading-md mt-2 text-white">
+                  {city} discovery layer
+                </h2>
               </div>
               <Navigation className="text-accent" size={18} />
             </div>
@@ -119,12 +236,15 @@ export default function DiscoverPage() {
               <div className="absolute bottom-4 left-4 rounded-2xl border border-white/10 bg-[#11141a]/90 p-4 backdrop-blur">
                 <p className="text-sm font-semibold text-white">Live map layer</p>
                 <p className="mt-1 max-w-xs text-sm leading-6 text-muted">
-                  Explore cafés aligned with your taste profile.
+                  {loading
+                    ? 'Loading city cafés...'
+                    : places.length > 0
+                      ? `Showing ${places.length} cafés currently available in ${city}.`
+                      : 'No cafés available on the map yet.'}
                 </p>
               </div>
             </div>
 
-            {/* ── Log visit CTA below map ── */}
             <button
               type="button"
               onClick={() => setShowVisitModal(true)}
@@ -134,10 +254,8 @@ export default function DiscoverPage() {
               <span>Log a visit</span>
             </button>
           </div>
-
         </section>
 
-        {/* ── Recommended brands ── */}
         <section className="card p-6">
           <div className="mb-5 flex items-center justify-between">
             <div>
@@ -145,25 +263,43 @@ export default function DiscoverPage() {
                 Recommended for you
               </p>
               <h2 className="heading-md mt-2 text-white">
-                Based on your {activeCategory.name.toLowerCase()} shelf
+                Coffee brands to explore
               </h2>
             </div>
             <Sparkles size={18} className="text-accent" />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            {discoverBrands.map((brand) => (
-              <BrandCard key={brand.id} brand={brand} compact />
-            ))}
+            {discoverBrands.length > 0 ? (
+              discoverBrands.map((brand) => (
+                <BrandCard key={brand.id} brand={brand} compact />
+              ))
+            ) : (
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 md:col-span-2">
+                <p className="text-sm text-muted">
+                  {loading
+                    ? 'Loading brand suggestions...'
+                    : 'No active brands available right now.'}
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
-        {/* ── Stats ── */}
         <section className="grid gap-4 md:grid-cols-3">
           {[
-            { label: 'Hot zone',                 value: 'Bandra West' },
-            { label: 'Most saved café',          value: 'Subko' },
-            { label: 'Weekend discovery trend',  value: 'Single origin pour-overs' },
+            {
+              label: 'Cafés on map',
+              value: loading ? '—' : String(places.length),
+            },
+            {
+              label: 'Brands in rotation',
+              value: loading ? '—' : String(discoverBrands.length),
+            },
+            {
+              label: 'City scope',
+              value: loading ? '—' : city,
+            },
           ].map((item) => (
             <div key={item.label} className="card p-5">
               <div className="mb-3 flex items-center gap-2">
@@ -176,7 +312,6 @@ export default function DiscoverPage() {
         </section>
       </div>
 
-      {/* ── Log Visit Modal ── */}
       {showVisitModal && (
         <LogVisitModal onClose={() => setShowVisitModal(false)} />
       )}
