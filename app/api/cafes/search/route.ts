@@ -63,7 +63,12 @@ function extractCity(place: NominatimPlace) {
   )
 }
 
-function mapDbCafe(cafe: Database['public']['Tables']['cafes']['Row']): CafeSearchResult {
+type CafeRowForSearch = Pick<
+  Database['public']['Tables']['cafes']['Row'],
+  'id' | 'osm_place_id' | 'name' | 'city' | 'address' | 'lat' | 'lng'
+>
+
+function mapDbCafe(cafe: CafeRowForSearch): CafeSearchResult {
   return {
     id: cafe.id,
     osm_place_id: cafe.osm_place_id ?? null,
