@@ -86,20 +86,33 @@ export default function DiscoverPage() {
         if (brandsRes.error) throw brandsRes.error
         if (!mounted) return
 
-        const mappedPlaces: MapPlace[] = (cafesRes.data ?? [])
-          .filter(
-            (cafe) =>
-              typeof cafe.lat === 'number' && Number.isFinite(cafe.lat) &&
-              typeof cafe.lng === 'number' && Number.isFinite(cafe.lng)
-          )
-          .map((cafe) => ({
-            id: cafe.id,
-            name: cafe.name,
-            lat: cafe.lat,
-            lng: cafe.lng,
-            city: cafe.city ?? null,
-            address: cafe.address ?? null,
-          }))
+        type CafeRow = {
+  id: string
+  name: string
+  lat: number | null
+  lng: number | null
+  city: string | null
+  address: string | null
+}
+
+const cafeRows = (cafesRes.data ?? []) as CafeRow[]
+
+const mappedPlaces: MapPlace[] = cafeRows
+  .filter(
+    (cafe): cafe is CafeRow & { lat: number; lng: number } =>
+      typeof cafe.lat === 'number' &&
+      Number.isFinite(cafe.lat) &&
+      typeof cafe.lng === 'number' &&
+      Number.isFinite(cafe.lng)
+  )
+  .map((cafe) => ({
+    id: cafe.id,
+    name: cafe.name,
+    lat: cafe.lat,
+    lng: cafe.lng,
+    city: cafe.city ?? null,
+    address: cafe.address ?? null,
+  }))
 
         setPlaces(mappedPlaces)
         setCity(userCity || mappedPlaces[0]?.city || 'Your city')
