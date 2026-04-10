@@ -106,9 +106,7 @@ export default function HomePage() {
         if (authError) throw authError
 
         if (!user) {
-          if (isMounted) {
-            setStats(DEFAULT_STATS)
-          }
+          if (isMounted) setStats(DEFAULT_STATS)
           return
         }
 
@@ -122,7 +120,7 @@ export default function HomePage() {
         ] = await Promise.all([
           supabase
             .from('profiles')
-            .select('id, username, city, xp, level, is_early_bird, is_pioneer')
+            .select('id, username, full_name, city, xp, level, is_early_bird, is_pioneer')
             .eq('id', user.id)
             .single(),
 
@@ -138,7 +136,7 @@ export default function HomePage() {
 
           supabase
             .from('shelf_items')
-            .select('brand_id, rank, elo_score')
+            .select('brand_id, rank, score')
             .eq('user_id', user.id)
             .order('rank', { ascending: true })
             .limit(3),
@@ -156,8 +154,11 @@ export default function HomePage() {
         ])
 
         if (profileRes.error) throw profileRes.error
+        if (comparisonsCountRes.error) throw comparisonsCountRes.error
+        if (shelfCountRes.error) throw shelfCountRes.error
         if (topShelfRes.error) throw topShelfRes.error
         if (userBadgesRes.error) throw userBadgesRes.error
+        if (cafeVisitsCountRes.error) throw cafeVisitsCountRes.error
 
         const profile = profileRes.data
         const city = profile?.city || 'Your city'
@@ -183,14 +184,15 @@ export default function HomePage() {
               .eq('city', profile.city),
           ])
 
+          if (rankAboveRes.error) throw rankAboveRes.error
+          if (cityUsersRes.error) throw cityUsersRes.error
+
           cityRank = (rankAboveRes.count ?? 0) + 1
           cityUserCount = cityUsersRes.count ?? 0
         }
 
         const topShelfRows = topShelfRes.data ?? []
-        const brandIds = topShelfRows
-          .map((row) => row.brand_id)
-          .filter(Boolean)
+        const brandIds = topShelfRows.map((row) => row.brand_id)
 
         let topBrands: TopBrandItem[] = []
 
@@ -214,7 +216,7 @@ export default function HomePage() {
 
               return {
                 brand,
-                score: Math.round(row.elo_score ?? 0),
+                score: Math.round(row.score ?? 0),
                 rank: row.rank ?? 0,
               }
             })
@@ -262,7 +264,7 @@ export default function HomePage() {
 
         const badgeCards = [...unlockedBadgeCards, ...progressCards].slice(0, 4)
 
-        let nextUnlockText = 'You are fully live - keep ranking to unlock more.'
+        let nextUnlockText = 'You are fully live. Keep ranking to unlock more.'
         if (faceOffCount < 100) {
           const remaining = 100 - faceOffCount
           nextUnlockText = `Complete ${remaining} more face-offs to earn Power Brewer.`
@@ -291,9 +293,7 @@ export default function HomePage() {
           setLoadError('Could not load live stats right now.')
         }
       } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
+        if (isMounted) setLoading(false)
       }
     }
 
@@ -351,7 +351,7 @@ export default function HomePage() {
                     {loading ? '—' : stats.cityRank ? `#${stats.cityRank}` : '—'}
                   </span>
                   <span className="stat-label">
-                    {stats.city ? `${stats.city} rank` : 'City rank'}
+                    {stats.city !== 'Your city' ? `${stats.city} rank` : 'City rank'}
                   </span>
                 </div>
               </div>
@@ -502,8 +502,7 @@ export default function HomePage() {
             {[
               {
                 label: 'Current city rank',
-                value:
-                  loading || !stats.cityRank ? '—' : `#${stats.cityRank}`,
+                value: loading || !stats.cityRank ? '—' : `#${stats.cityRank}`,
               },
               {
                 label: 'Rankers in your city',
