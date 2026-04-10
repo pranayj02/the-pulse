@@ -89,7 +89,7 @@ export default async function ProfilePage() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, username, city, xp, level, is_early_bird, is_pioneer')
+      .select('id, username, full_name, city, xp, level, is_early_bird, is_pioneer')
       .eq('id', user.id)
       .single(),
 
@@ -110,7 +110,7 @@ export default async function ProfilePage() {
 
     supabase
       .from('shelf_items')
-      .select('brand_id, category_id, rank, elo_score')
+      .select('brand_id, category_id, rank, score')
       .eq('user_id', user.id)
       .order('rank', { ascending: true }),
 
@@ -121,8 +121,28 @@ export default async function ProfilePage() {
       .order('earned_at', { ascending: false }),
   ])
 
+  if (profileRes.error) {
+    throw new Error(profileRes.error.message)
+  }
+  if (comparisonsCountRes.error) {
+    throw new Error(comparisonsCountRes.error.message)
+  }
+  if (followsCountRes.error) {
+    throw new Error(followsCountRes.error.message)
+  }
+  if (cafeVisitsCountRes.error) {
+    throw new Error(cafeVisitsCountRes.error.message)
+  }
+  if (shelfItemsRes.error) {
+    throw new Error(shelfItemsRes.error.message)
+  }
+  if (userBadgesRes.error) {
+    throw new Error(userBadgesRes.error.message)
+  }
+
   const profile = profileRes.data
   const displayName =
+    profile?.full_name ||
     user.user_metadata?.full_name ||
     profile?.username ||
     user.email?.split('@')[0] ||
@@ -131,13 +151,14 @@ export default async function ProfilePage() {
   const initials = getInitials(displayName)
   const city = profile?.city || 'City not set'
   const xp = profile?.xp ?? 0
-  const level = profile?.level ?? 1
+  const level = profile?.level || 'Sip'
   const faceOffCount = comparisonsCountRes.count ?? 0
   const followersCount = followsCountRes.count ?? 0
   const cafeVisitsCount = cafeVisitsCountRes.count ?? 0
   const shelfItems = shelfItemsRes.data ?? []
+
   const categoriesActive = new Set(
-    shelfItems.map((item) => item.category_id).filter(Boolean)
+    shelfItems.map((item) => item.category_id)
   ).size
 
   let cityRank: number | null = null
@@ -149,12 +170,14 @@ export default async function ProfilePage() {
       .eq('city', profile.city)
       .gt('xp', xp)
 
+    if (rankAboveRes.error) {
+      throw new Error(rankAboveRes.error.message)
+    }
+
     cityRank = (rankAboveRes.count ?? 0) + 1
   }
 
-  const shelfBrandIds = shelfItems
-    .map((item) => item.brand_id)
-    .filter(Boolean)
+  const shelfBrandIds = shelfItems.map((item) => item.brand_id)
 
   let shelfPreview: Array<{
     brand: Brand
@@ -167,6 +190,10 @@ export default async function ProfilePage() {
       .from('brands')
       .select('*')
       .in('id', shelfBrandIds)
+
+    if (brandsRes.error) {
+      throw new Error(brandsRes.error.message)
+    }
 
     const brandMap = new Map<string, Brand>()
     for (const brand of brandsRes.data ?? []) {
@@ -182,7 +209,7 @@ export default async function ProfilePage() {
         return {
           brand,
           rank: item.rank ?? 0,
-          score: Math.round(item.elo_score ?? 0),
+          score: Math.round(item.score ?? 0),
         }
       })
       .filter(Boolean) as Array<{
@@ -248,9 +275,7 @@ export default async function ProfilePage() {
 
                   <div className="pill">
                     <Trophy size={14} />
-                    <span>
-                      {cityRank ? `Rank #${cityRank}` : 'Rank loading'}
-                    </span>
+                    <span>{cityRank ? `Rank #${cityRank}` : 'Rank loading'}</span>
                   </div>
                 </div>
               </div>
