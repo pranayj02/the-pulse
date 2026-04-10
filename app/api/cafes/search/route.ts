@@ -29,6 +29,11 @@ type NominatimPlace = {
   }
 }
 
+type CafeRowForSearch = Pick<
+  Database['public']['Tables']['cafes']['Row'],
+  'id' | 'osm_place_id' | 'name' | 'city' | 'address' | 'lat' | 'lng'
+>
+
 function normalizeText(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
 }
@@ -62,11 +67,6 @@ function extractCity(place: NominatimPlace) {
     null
   )
 }
-
-type CafeRowForSearch = Pick<
-  Database['public']['Tables']['cafes']['Row'],
-  'id' | 'osm_place_id' | 'name' | 'city' | 'address' | 'lat' | 'lng'
->
 
 function mapDbCafe(cafe: CafeRowForSearch): CafeSearchResult {
   return {
@@ -104,7 +104,10 @@ export async function GET(request: Request) {
         .maybeSingle()
 
       if (profileRes.error) {
-        return NextResponse.json({ error: profileRes.error.message }, { status: 500 })
+        return NextResponse.json(
+          { error: profileRes.error.message },
+          { status: 500 }
+        )
       }
 
       userCity = profileRes.data?.city ?? null
@@ -122,7 +125,10 @@ export async function GET(request: Request) {
           .limit(12)
 
         if (cityRes.error) {
-          return NextResponse.json({ error: cityRes.error.message }, { status: 500 })
+          return NextResponse.json(
+            { error: cityRes.error.message },
+            { status: 500 }
+          )
         }
 
         dbResults = (cityRes.data ?? []).map(mapDbCafe)
@@ -134,7 +140,10 @@ export async function GET(request: Request) {
           .limit(12)
 
         if (defaultRes.error) {
-          return NextResponse.json({ error: defaultRes.error.message }, { status: 500 })
+          return NextResponse.json(
+            { error: defaultRes.error.message },
+            { status: 500 }
+          )
         }
 
         dbResults = (defaultRes.data ?? []).map(mapDbCafe)
@@ -143,47 +152,46 @@ export async function GET(request: Request) {
       return NextResponse.json({ cafes: dedupeCafeResults(dbResults) })
     }
 
-    const dbQueries: Array<PromiseLike<{
-      data: Database['public']['Tables']['cafes']['Row'][] | null
-      error: { message: string } | null
-    }>> = []
+    let cityDbResults: CafeSearchResult[] = []
 
     if (userCity) {
-      dbQueries.push(
-        supabase
-          .from('cafes')
-          .select('id, osm_place_id, name, city, address, lat, lng')
-          .eq('city', userCity)
-          .or(`name.ilike.%${q}%,address.ilike.%${q}%`)
-          .order('name', { ascending: true })
-          .limit(8)
+      const cityRes = await supabase
+        .from('cafes')
+        .select('id, osm_place_id, name, city, address, lat, lng')
+        .eq('city', userCity)
+        .or(`name.ilike.%${q}%,address.ilike.%${q}%`)
+        .order('name', { ascending: true })
+        .limit(8)
+
+      if (cityRes.error) {
+        return NextResponse.json(
+          { error: cityRes.error.message },
+          { status: 500 }
+        )
+      }
+
+      cityDbResults = (cityRes.data ?? []).map(mapDbCafe)
+    }
+
+    const globalRes = await supabase
+      .from('cafes')
+      .select('id, osm_place_id, name, city, address, lat, lng')
+      .or(`name.ilike.%${q}%,city.ilike.%${q}%,address.ilike.%${q}%`)
+      .order('name', { ascending: true })
+      .limit(8)
+
+    if (globalRes.error) {
+      return NextResponse.json(
+        { error: globalRes.error.message },
+        { status: 500 }
       )
     }
 
-    dbQueries.push(
-      supabase
-        .from('cafes')
-        .select('id, osm_place_id, name, city, address, lat, lng')
-        .or(`name.ilike.%${q}%,city.ilike.%${q}%,address.ilike.%${q}%`)
-        .order('name', { ascending: true })
-        .limit(8)
-    )
+    dbResults = dedupeCafeResults([
+      ...cityDbResults,
+      ...(globalRes.data ?? []).map(mapDbCafe),
+    ])
 
-    const dbResponses = await Promise.all(dbQueries)
-
-    for (const res of dbResponses) {
-      if (res.error) {
-        return NextResponse.json({ error: res.error.message }, { status: 500 })
-      }
-    }
-
-    dbResults = dedupeCafeResults(
-      dbResponses.flatMap((res) => (res.data ?? []).map(mapDbCafe))
-    )
-
-    // Protect the public Nominatim endpoint:
-    // - don't search it for very short queries
-    // - don't call it if DB already has enough results
     if (q.length < 3 || dbResults.length >= 6) {
       return NextResponse.json({ cafes: dbResults.slice(0, 12) })
     }
@@ -228,7 +236,10 @@ export async function GET(request: Request) {
       console.error('Nominatim lookup failed:', error)
     }
 
-    const cafes = dedupeCafeResults([...dbResults, ...nominatimResults]).slice(0, 12)
+    const cafes = dedupeCafeResults([
+      ...dbResults,
+      ...nominatimResults,
+    ]).slice(0, 12)
 
     return NextResponse.json({ cafes })
   } catch (error) {
