@@ -19,16 +19,32 @@ type VisitRequestBody = {
   visitedAt?: string | null
 }
 
+function normalizeText(value: string | null | undefined) {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+function normalizeVisitedAt(value: string | null | undefined) {
+  if (!value) return new Date().toISOString()
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T12:00:00.000Z`).toISOString()
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString()
+
+  return parsed.toISOString()
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as VisitRequestBody
-    const {
-      cafeId,
-      cafe,
-      brandIds = [],
-      note,
-      visitedAt,
-    } = body
+    const { cafeId, cafe, brandIds = [], note, visitedAt } = body
 
     const normalizedBrandIds = Array.from(
       new Set((brandIds ?? []).filter(Boolean))
@@ -75,15 +91,31 @@ export async function POST(request: Request) {
     }
 
     if (!resolvedCafeId) {
+      const name = normalizeText(cafe?.name)
+      const city = normalizeText(cafe?.city)
+      const address = normalizeText(cafe?.address)
+      const lat = cafe?.lat
+      const lng = cafe?.lng
+
+      if (!name || !city || !address || !isFiniteNumber(lat) || !isFiniteNumber(lng)) {
+        return NextResponse.json(
+          {
+            error:
+              'Selected café is missing required location details. Please choose a result from search.',
+          },
+          { status: 400 }
+        )
+      }
+
       const insertCafeRes = await supabase
         .from('cafes')
         .insert({
-          name: cafe?.name?.trim() || 'Unknown Cafe',
-          city: cafe?.city?.trim() || null,
-          address: cafe?.address?.trim() || null,
-          lat: cafe?.lat ?? null,
-          lng: cafe?.lng ?? null,
-          osm_place_id: cafe?.osm_place_id ?? null,
+          name,
+          city,
+          address,
+          lat,
+          lng,
+          osm_place_id: normalizeText(cafe?.osm_place_id),
         })
         .select('id')
         .single()
@@ -103,8 +135,8 @@ export async function POST(request: Request) {
       .insert({
         user_id: user.id,
         cafe_id: resolvedCafeId,
-        note: note?.trim() || null,
-        visited_at: visitedAt ?? new Date().toISOString(),
+        note: normalizeText(note),
+        visited_at: normalizeVisitedAt(visitedAt),
       })
       .select('id')
       .single()
