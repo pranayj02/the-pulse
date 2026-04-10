@@ -51,13 +51,14 @@ export default function DiscoverPage() {
 
         if (user?.id) {
           const profileRes = await supabase
-            .from('profiles')
-            .select('city')
-            .eq('id', user.id)
-            .maybeSingle()
-
-          if (profileRes.error) throw profileRes.error
-          userCity = profileRes.data?.city ?? null
+          .from('profiles')
+          .select('city')
+          .eq('id', user.id)
+          .maybeSingle()
+          .overrideTypes<{ city: string | null } | null>()
+        
+        if (profileRes.error) throw profileRes.error
+        userCity = profileRes.data?.city ?? null
         }
 
         let cafesQuery = supabase
