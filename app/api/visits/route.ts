@@ -14,9 +14,24 @@ type VisitRequestBody = {
     lat?: number | null
     lng?: number | null
   } | null
-  brandIds?: string[]
   note?: string | null
   visitedAt?: string | null
+}
+
+type BrandRow = {
+  id: string
+  name: string
+  slug: string | null
+}
+
+type CafeRow = {
+  id: string
+  name: string
+  city: string | null
+  address: string | null
+  osm_place_id: string | null
+  primary_brand_id: string | null
+  brand_match_status: 'matched' | 'pending' | 'unmatched' | null
 }
 
 function normalizeText(value: string | null | undefined) {
@@ -41,20 +56,75 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+function normalizeForMatch(value: string | null | undefined) {
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/[|,()\-]/g, ' ')
+    .replace(/\b(coffee|cafe|café|roasters|roastery|espresso|bar|outlet|store)\b/g, ' ')
+    .replace(
+      /\b(fort|worli|bandra|nariman point|kala ghoda|churchgate|andheri|juhu|powai|colaba)\b/g,
+      ' '
+    )
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function scoreBrandMatch(cafeName: string, brand: BrandRow) {
+  const cafeNorm = normalizeForMatch(cafeName)
+  const brandNorm = normalizeForMatch(brand.name)
+  const slugNorm = normalizeForMatch(brand.slug)
+
+  if (!cafeNorm || (!brandNorm && !slugNorm)) return 0
+
+  if (cafeNorm === brandNorm || (slugNorm && cafeNorm === slugNorm)) return 1
+  if (brandNorm && cafeNorm.startsWith(brandNorm)) return 0.96
+  if (brandNorm && cafeNorm.includes(brandNorm)) return 0.92
+  if (slugNorm && cafeNorm.includes(slugNorm)) return 0.9
+
+  return 0
+}
+
+async function findBestBrandMatch(
+  supabase: SupabaseClient<Database>,
+  cafeName: string
+): Promise<{ brandId: string | null; status: 'matched' | 'pending' | 'unmatched' }> {
+  const brandsRes = await supabase
+    .from('brands')
+    .select('id, name, slug')
+    .eq('is_active', true)
+
+  if (brandsRes.error) {
+    throw new Error(brandsRes.error.message)
+  }
+
+  const brands = (brandsRes.data ?? []) as BrandRow[]
+  let best: { brandId: string | null; score: number } = { brandId: null, score: 0 }
+
+  for (const brand of brands) {
+    const score = scoreBrandMatch(cafeName, brand)
+    if (score > best.score) {
+      best = { brandId: brand.id, score }
+    }
+  }
+
+  if (best.brandId && best.score >= 0.95) {
+    return { brandId: best.brandId, status: 'matched' }
+  }
+
+  if (best.brandId && best.score >= 0.9) {
+    return { brandId: best.brandId, status: 'pending' }
+  }
+
+  return { brandId: null, status: 'unmatched' }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as VisitRequestBody
-    const { cafeId, cafe, brandIds = [], note, visitedAt } = body
-
-    const normalizedBrandIds = Array.from(
-      new Set((brandIds ?? []).filter(Boolean))
-    )
+    const { cafeId, cafe, note, visitedAt } = body
 
     if (!cafeId && !cafe?.id && !cafe?.name) {
-      return NextResponse.json(
-        { error: 'Cafe is required.' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Cafe is required.' }, { status: 400 })
     }
 
     const supabase =
@@ -70,24 +140,37 @@ export async function POST(request: Request) {
     }
 
     let resolvedCafeId = cafeId || cafe?.id || null
+    let resolvedCafe: CafeRow | null = null
 
     if (!resolvedCafeId && cafe?.osm_place_id) {
       const existingCafeRes = await supabase
         .from('cafes')
-        .select('id')
+        .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
         .eq('osm_place_id', cafe.osm_place_id)
         .maybeSingle()
 
       if (existingCafeRes.error) {
-        return NextResponse.json(
-          { error: existingCafeRes.error.message },
-          { status: 500 }
-        )
+        return NextResponse.json({ error: existingCafeRes.error.message }, { status: 500 })
       }
 
-      if (existingCafeRes.data?.id) {
-        resolvedCafeId = existingCafeRes.data.id
+      if (existingCafeRes.data) {
+        resolvedCafe = existingCafeRes.data as CafeRow
+        resolvedCafeId = resolvedCafe.id
       }
+    }
+
+    if (resolvedCafeId && !resolvedCafe) {
+      const cafeRes = await supabase
+        .from('cafes')
+        .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
+        .eq('id', resolvedCafeId)
+        .maybeSingle()
+
+      if (cafeRes.error) {
+        return NextResponse.json({ error: cafeRes.error.message }, { status: 500 })
+      }
+
+      resolvedCafe = (cafeRes.data as CafeRow | null) ?? null
     }
 
     if (!resolvedCafeId) {
@@ -107,6 +190,8 @@ export async function POST(request: Request) {
         )
       }
 
+      const match = await findBestBrandMatch(supabase, name)
+
       const insertCafeRes = await supabase
         .from('cafes')
         .insert({
@@ -116,18 +201,70 @@ export async function POST(request: Request) {
           lat,
           lng,
           osm_place_id: normalizeText(cafe?.osm_place_id),
+          primary_brand_id: match.brandId,
+          brand_match_status: match.status,
         })
-        .select('id')
+        .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
         .single()
 
       if (insertCafeRes.error) {
-        return NextResponse.json(
-          { error: insertCafeRes.error.message },
-          { status: 500 }
-        )
+        return NextResponse.json({ error: insertCafeRes.error.message }, { status: 500 })
       }
 
-      resolvedCafeId = insertCafeRes.data.id
+      resolvedCafe = insertCafeRes.data as CafeRow
+      resolvedCafeId = resolvedCafe.id
+
+      if (match.brandId) {
+        const insertCafeBrandRes = await supabase
+          .from('cafe_brands')
+          .upsert(
+            [{ cafe_id: resolvedCafeId, brand_id: match.brandId }],
+            { onConflict: 'cafe_id,brand_id' }
+          )
+
+        if (insertCafeBrandRes.error) {
+          return NextResponse.json({ error: insertCafeBrandRes.error.message }, { status: 500 })
+        }
+      }
+    }
+
+    if (!resolvedCafeId || !resolvedCafe) {
+      return NextResponse.json({ error: 'Could not resolve café.' }, { status: 500 })
+    }
+
+    if (!resolvedCafe.primary_brand_id && resolvedCafe.name) {
+      const match = await findBestBrandMatch(supabase, resolvedCafe.name)
+
+      if (match.brandId || match.status !== resolvedCafe.brand_match_status) {
+        const updateCafeRes = await supabase
+          .from('cafes')
+          .update({
+            primary_brand_id: match.brandId,
+            brand_match_status: match.status,
+          })
+          .eq('id', resolvedCafeId)
+          .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
+          .single()
+
+        if (updateCafeRes.error) {
+          return NextResponse.json({ error: updateCafeRes.error.message }, { status: 500 })
+        }
+
+        resolvedCafe = updateCafeRes.data as CafeRow
+
+        if (match.brandId) {
+          const upsertCafeBrandRes = await supabase
+            .from('cafe_brands')
+            .upsert(
+              [{ cafe_id: resolvedCafeId, brand_id: match.brandId }],
+              { onConflict: 'cafe_id,brand_id' }
+            )
+
+          if (upsertCafeBrandRes.error) {
+            return NextResponse.json({ error: upsertCafeBrandRes.error.message }, { status: 500 })
+          }
+        }
+      }
     }
 
     const visitInsertRes = await supabase
@@ -142,48 +279,7 @@ export async function POST(request: Request) {
       .single()
 
     if (visitInsertRes.error) {
-      return NextResponse.json(
-        { error: visitInsertRes.error.message },
-        { status: 500 }
-      )
-    }
-
-    if (normalizedBrandIds.length > 0) {
-      const existingCafeBrandsRes = await supabase
-        .from('cafe_brands')
-        .select('brand_id')
-        .eq('cafe_id', resolvedCafeId)
-
-      if (existingCafeBrandsRes.error) {
-        return NextResponse.json(
-          { error: existingCafeBrandsRes.error.message },
-          { status: 500 }
-        )
-      }
-
-      const existingBrandIds = new Set(
-        (existingCafeBrandsRes.data ?? []).map((row) => row.brand_id)
-      )
-
-      const rowsToInsert = normalizedBrandIds
-        .filter((brandId) => !existingBrandIds.has(brandId))
-        .map((brandId) => ({
-          cafe_id: resolvedCafeId,
-          brand_id: brandId,
-        }))
-
-      if (rowsToInsert.length > 0) {
-        const insertCafeBrandsRes = await supabase
-          .from('cafe_brands')
-          .insert(rowsToInsert)
-
-        if (insertCafeBrandsRes.error) {
-          return NextResponse.json(
-            { error: insertCafeBrandsRes.error.message },
-            { status: 500 }
-          )
-        }
-      }
+      return NextResponse.json({ error: visitInsertRes.error.message }, { status: 500 })
     }
 
     const finalCafeBrandsRes = await supabase
@@ -192,23 +288,21 @@ export async function POST(request: Request) {
       .eq('cafe_id', resolvedCafeId)
 
     if (finalCafeBrandsRes.error) {
-      return NextResponse.json(
-        { error: finalCafeBrandsRes.error.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: finalCafeBrandsRes.error.message }, { status: 500 })
     }
+
+    const finalBrandIds = (finalCafeBrandsRes.data ?? []).map((row) => row.brand_id)
 
     return NextResponse.json({
       success: true,
       visitId: visitInsertRes.data.id,
       cafeId: resolvedCafeId,
-      brandIds: (finalCafeBrandsRes.data ?? []).map((row) => row.brand_id),
+      primaryBrandId: resolvedCafe.primary_brand_id,
+      brandMatchStatus: resolvedCafe.brand_match_status ?? 'unmatched',
+      brandIds: finalBrandIds,
     })
   } catch (error) {
     console.error('POST /api/visits failed:', error)
-    return NextResponse.json(
-      { error: 'Something went wrong.' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 })
   }
 }
