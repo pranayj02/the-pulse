@@ -209,6 +209,7 @@ export type Database = {
         Row: {
           address: string
           avg_rating: number | null
+          brand_match_status: string | null
           city: string
           created_at: string
           google_place_id: string | null
@@ -217,11 +218,13 @@ export type Database = {
           lng: number
           name: string
           osm_place_id: string | null
+          primary_brand_id: string | null
           review_count: number
         }
         Insert: {
           address: string
           avg_rating?: number | null
+          brand_match_status?: string | null
           city: string
           created_at?: string
           google_place_id?: string | null
@@ -230,11 +233,13 @@ export type Database = {
           lng: number
           name: string
           osm_place_id?: string | null
+          primary_brand_id?: string | null
           review_count?: number
         }
         Update: {
           address?: string
           avg_rating?: number | null
+          brand_match_status?: string | null
           city?: string
           created_at?: string
           google_place_id?: string | null
@@ -243,9 +248,18 @@ export type Database = {
           lng?: number
           name?: string
           osm_place_id?: string | null
+          primary_brand_id?: string | null
           review_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cafes_primary_brand_id_fkey"
+            columns: ["primary_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       categories: {
         Row: {
