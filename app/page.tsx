@@ -35,6 +35,28 @@ type HomeStats = {
   nextUnlockText: string
 }
 
+type HomeProfileRow = {
+  id: string
+  username: string | null
+  full_name: string | null
+  city: string | null
+  xp: number | null
+  level: number | null
+  is_early_bird: boolean | null
+  is_pioneer: boolean | null
+}
+
+type ShelfRow = {
+  brand_id: string
+  rank: number | null
+  score: number | null
+}
+
+type UserBadgeRow = {
+  badge_slug: string | null
+  earned_at: string | null
+}
+
 const DEFAULT_STATS: HomeStats = {
   city: 'Your city',
   xp: 0,
@@ -160,8 +182,11 @@ export default function HomePage() {
         if (userBadgesRes.error) throw userBadgesRes.error
         if (cafeVisitsCountRes.error) throw cafeVisitsCountRes.error
 
-        const profile = profileRes.data
-        const city = profile?.city || 'Your city'
+        const profile = profileRes.data as HomeProfileRow | null
+        const topShelfRows = (topShelfRes.data ?? []) as ShelfRow[]
+        const userBadgeRows = (userBadgesRes.data ?? []) as UserBadgeRow[]
+
+        const city = profile?.city ?? 'Your city'
         const xp = profile?.xp ?? 0
         const faceOffCount = comparisonsCountRes.count ?? 0
         const brandCount = shelfCountRes.count ?? 0
@@ -191,8 +216,9 @@ export default function HomePage() {
           cityUserCount = cityUsersRes.count ?? 0
         }
 
-        const topShelfRows = topShelfRes.data ?? []
-        const brandIds = topShelfRows.map((row) => row.brand_id)
+        const brandIds = topShelfRows
+          .map((row) => row.brand_id)
+          .filter(Boolean)
 
         let topBrands: TopBrandItem[] = []
 
@@ -204,9 +230,11 @@ export default function HomePage() {
 
           if (brandsRes.error) throw brandsRes.error
 
+          const brands = (brandsRes.data ?? []) as Brand[]
           const brandMap = new Map<string, Brand>()
-          for (const brand of brandsRes.data ?? []) {
-            brandMap.set(brand.id, brand as Brand)
+
+          for (const brand of brands) {
+            brandMap.set(brand.id, brand)
           }
 
           topBrands = topShelfRows
@@ -220,11 +248,11 @@ export default function HomePage() {
                 rank: row.rank ?? 0,
               }
             })
-            .filter(Boolean) as TopBrandItem[]
+            .filter((item): item is TopBrandItem => item !== null)
         }
 
         const unlockedBadgeKeys = new Set<string>(
-          (userBadgesRes.data ?? [])
+          userBadgeRows
             .map((badge) => normalizeBadgeSlug(badge.badge_slug))
             .filter(Boolean)
         )
@@ -235,7 +263,15 @@ export default function HomePage() {
 
         const unlockedBadgeCards: BadgeCard[] = Array.from(unlockedBadgeKeys)
           .map((key) => BADGE_META[key])
-          .filter(Boolean)
+          .filter(
+            (
+              badge
+            ): badge is {
+              name: string
+              emoji: string
+              description: string
+            } => Boolean(badge)
+          )
           .slice(0, 2)
           .map((badge) => ({
             name: badge.name,
