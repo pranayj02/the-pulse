@@ -13,6 +13,35 @@ import { BrandCard } from '@/components/BrandCard'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import type { Brand } from '@/lib/types'
 
+type ProfileRow = {
+  id: string
+  username: string | null
+  full_name: string | null
+  city: string | null
+  xp: number | null
+  level: string | number | null
+  is_early_bird: boolean | null
+  is_pioneer: boolean | null
+}
+
+type ShelfItemRow = {
+  brand_id: string
+  category_id: string | null
+  rank: number | null
+  score: number | null
+}
+
+type UserBadgeRow = {
+  badge_slug: string | null
+  earned_at: string | null
+}
+
+type ShelfPreviewItem = {
+  brand: Brand
+  rank: number
+  score: number
+}
+
 const BADGE_META: Record<
   string,
   { name: string; emoji: string; description: string }
@@ -140,7 +169,10 @@ export default async function ProfilePage() {
     throw new Error(userBadgesRes.error.message)
   }
 
-  const profile = profileRes.data
+  const profile = profileRes.data as ProfileRow | null
+  const shelfItems = (shelfItemsRes.data ?? []) as ShelfItemRow[]
+  const userBadgeRows = (userBadgesRes.data ?? []) as UserBadgeRow[]
+
   const displayName =
     profile?.full_name ||
     user.user_metadata?.full_name ||
@@ -149,16 +181,17 @@ export default async function ProfilePage() {
     'Your profile'
 
   const initials = getInitials(displayName)
-  const city = profile?.city || 'City not set'
+  const city = profile?.city ?? 'City not set'
   const xp = profile?.xp ?? 0
-  const level = profile?.level || 'Sip'
+  const level = profile?.level ?? 'Sip'
   const faceOffCount = comparisonsCountRes.count ?? 0
   const followersCount = followsCountRes.count ?? 0
   const cafeVisitsCount = cafeVisitsCountRes.count ?? 0
-  const shelfItems = shelfItemsRes.data ?? []
 
   const categoriesActive = new Set(
-    shelfItems.map((item) => item.category_id)
+    shelfItems
+      .map((item) => item.category_id)
+      .filter((categoryId): categoryId is string => Boolean(categoryId))
   ).size
 
   let cityRank: number | null = null
@@ -177,13 +210,11 @@ export default async function ProfilePage() {
     cityRank = (rankAboveRes.count ?? 0) + 1
   }
 
-  const shelfBrandIds = shelfItems.map((item) => item.brand_id)
+  const shelfBrandIds = shelfItems
+    .map((item) => item.brand_id)
+    .filter((brandId): brandId is string => Boolean(brandId))
 
-  let shelfPreview: Array<{
-    brand: Brand
-    rank: number
-    score: number
-  }> = []
+  let shelfPreview: ShelfPreviewItem[] = []
 
   if (shelfBrandIds.length > 0) {
     const brandsRes = await supabase
@@ -195,9 +226,11 @@ export default async function ProfilePage() {
       throw new Error(brandsRes.error.message)
     }
 
+    const brands = (brandsRes.data ?? []) as Brand[]
     const brandMap = new Map<string, Brand>()
-    for (const brand of brandsRes.data ?? []) {
-      brandMap.set(brand.id, brand as Brand)
+
+    for (const brand of brands) {
+      brandMap.set(brand.id, brand)
     }
 
     shelfPreview = shelfItems
@@ -212,15 +245,11 @@ export default async function ProfilePage() {
           score: Math.round(item.score ?? 0),
         }
       })
-      .filter(Boolean) as Array<{
-      brand: Brand
-      rank: number
-      score: number
-    }>
+      .filter((item): item is ShelfPreviewItem => item !== null)
   }
 
   const unlockedBadgeKeys = new Set<string>(
-    (userBadgesRes.data ?? [])
+    userBadgeRows
       .map((badge) => normalizeBadgeSlug(badge.badge_slug))
       .filter(Boolean)
   )
@@ -231,7 +260,15 @@ export default async function ProfilePage() {
 
   const earnedBadges = Array.from(unlockedBadgeKeys)
     .map((key) => BADGE_META[key])
-    .filter(Boolean)
+    .filter(
+      (
+        badge
+      ): badge is {
+        name: string
+        emoji: string
+        description: string
+      } => Boolean(badge)
+    )
 
   let nextBadgeText = 'You are live. Keep ranking to unlock more.'
   if (faceOffCount < 100) {
