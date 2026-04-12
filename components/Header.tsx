@@ -1,17 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { Bell, Compass, Home, Trophy, User2 } from 'lucide-react'
+import { Bell, Compass, Home, Trophy, User2, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type HeaderProps = {
-  active?: 'home' | 'discover' | 'leaderboard' | 'profile'
+  active?: 'home' | 'discover' | 'leaderboard' | 'summary' | 'profile'
 }
 
 const navItems = [
   { key: 'home', label: 'Home', href: '/', icon: Home },
   { key: 'discover', label: 'Discover', href: '/discover', icon: Compass },
   { key: 'leaderboard', label: 'Leaderboard', href: '/leaderboard', icon: Trophy },
+  { key: 'summary', label: 'Summary', href: '/summary', icon: BarChart3 },
   { key: 'profile', label: 'Profile', href: '/profile', icon: User2 },
 ] as const
 
@@ -22,11 +23,11 @@ export function Header({ active = 'home' }: HeaderProps) {
         <div className="card flex items-center justify-between px-4 py-3 md:px-6">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-black">
-              <span className="font-display text-lg font-semibold">P</span>
+              <span className="font-display text-lg font-semibold">C</span>
             </div>
             <div>
-              <p className="font-display text-xl leading-none text-white">The Pulse</p>
-              <p className="text-sm text-muted">Taste, ranked.</p>
+              <p className="font-display text-xl leading-none text-white">Chun</p>
+              <p className="text-sm text-muted">Choose your taste.</p>
             </div>
           </Link>
 
@@ -34,6 +35,27 @@ export function Header({ active = 'home' }: HeaderProps) {
             <div className="pill">
               <span>Category</span>
               <strong className="text-white">Coffee</strong>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {navItems.map((item) => {
+                const isActive = active === item.key
+
+                return (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    className={cn(
+                      'rounded-full px-4 py-2 text-sm transition',
+                      isActive
+                        ? 'bg-accent text-black'
+                        : 'border border-white/10 bg-white/5 text-muted hover:border-white/20 hover:bg-white/10 hover:text-white'
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
             </div>
 
             <button
@@ -57,7 +79,7 @@ export function Header({ active = 'home' }: HeaderProps) {
       </header>
 
       <nav className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-20px)] max-w-md -translate-x-1/2 md:hidden">
-        <div className="card-strong grid grid-cols-4 px-2 py-2">
+        <div className="card-strong grid grid-cols-5 px-2 py-2">
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = active === item.key
@@ -67,7 +89,7 @@ export function Header({ active = 'home' }: HeaderProps) {
                 key={item.key}
                 href={item.href}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs transition',
+                  'flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] transition',
                   isActive
                     ? 'bg-accent text-black'
                     : 'text-muted hover:bg-white/5 hover:text-white'
