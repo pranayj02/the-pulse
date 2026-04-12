@@ -11,6 +11,8 @@ import {
   CalendarDays,
   CheckCircle2,
   AlertCircle,
+  Trophy,
+  SkipForward,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -26,29 +28,48 @@ type SearchCafeResult = {
   brand_match_status?: 'matched' | 'pending' | 'unmatched' | null
 }
 
+type ShelfBrand = {
+  brandId: string
+  score: number
+  brandName: string
+}
+
+type Phase = 'form' | 'faceoff' | 'done'
+
 export function LogVisitModal({ onClose }: { onClose: () => void }) {
   const router = useRouter()
 
+  // ── Form state ─────────────────────────────────────────────────────────────
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchCafeResult[]>([])
   const [searching, setSearching] = useState(false)
   const [selectedCafe, setSelectedCafe] = useState<SearchCafeResult | null>(null)
-
   const [note, setNote] = useState('')
   const [visitedAt, setVisitedAt] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
 
+  // ── Face-off carousel state ────────────────────────────────────────────────
+  const [phase, setPhase] = useState<Phase>('form')
+  const [seededBrandId, setSeededBrandId] = useState<string | null>(null)
+  const [seededBrandName, setSeededBrandName] = useState<string | null>(null)
+  const [categoryId, setCategoryId] = useState<string | null>(null)
+  const [faceoffQueue, setFaceoffQueue] = useState<ShelfBrand[]>([])
+  const [faceoffIndex, setFaceoffIndex] = useState(0)
+  const [faceoffLoading, setFaceoffLoading] = useState(false)
+  const [finalRank, setFinalRank] = useState<number | null>(null)
+
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── Keyboard close ─────────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
-
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // ── Initial café list ──────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true
 
@@ -56,7 +77,6 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
       try {
         const res = await fetch('/api/cafes/search?q=')
         if (!res.ok) throw new Error('Could not load cafes')
-
         const data = await res.json()
         if (!mounted) return
         setResults(data.cafes ?? [])
@@ -67,15 +87,12 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
     }
 
     loadInitialResults()
-
-    return () => {
-      mounted = false
-    }
+    return () => { mounted = false }
   }, [])
 
+  // ── Search debounce ────────────────────────────────────────────────────────
   useEffect(() => {
     if (selectedCafe) return
-
     if (searchRef.current) clearTimeout(searchRef.current)
 
     searchRef.current = setTimeout(async () => {
@@ -83,7 +100,6 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
         setSearching(true)
         const res = await fetch(`/api/cafes/search?q=${encodeURIComponent(query)}`)
         if (!res.ok) throw new Error('Could not search cafes')
-
         const data = await res.json()
         setResults(data.cafes ?? [])
       } catch (error) {
@@ -99,6 +115,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
     }
   }, [query, selectedCafe])
 
+  // ── Submit visit ───────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (!selectedCafe) {
       toast.error('Please select a café.')
@@ -133,206 +150,5 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
         throw new Error(data.error || 'Could not log visit.')
       }
 
-      if (data.brandMatchStatus === 'matched') {
-        toast.success(`Visit to ${selectedCafe.name} logged.`)
-      } else if (data.brandMatchStatus === 'pending') {
-        toast.success('Visit logged. Brand match will be reviewed.')
-      } else {
-        toast.success("Visit logged. We'll map this café to a brand soon.")
-      }
-
-      onClose()
-
-      const faceoffBrandIds: string[] = Array.isArray(data.brandIds)
-        ? data.brandIds.filter(Boolean)
-        : []
-
-      if (faceoffBrandIds.length >= 2) {
-        router.push(`/faceoff?brands=${faceoffBrandIds.slice(0, 2).join(',')}`)
-      } else {
-        router.refresh()
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not log visit.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const showEmptyState =
-    !searching && results.length === 0 && query.trim().length >= 2
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className="w-full max-w-2xl rounded-t-3xl bg-[#1c1b19] p-6 sm:rounded-3xl sm:p-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Log a visit</h2>
-            <p className="mt-1 text-sm text-muted">
-              Pick the café. Chun will map the operator brand automatically.
-            </p>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="rounded-full p-2 hover:bg-white/10"
-            aria-label="Close"
-          >
-            <X size={18} className="text-muted" />
-          </button>
-        </div>
-
-        {!selectedCafe ? (
-          <div className="mb-5">
-            <label className="mb-2 block text-xs uppercase tracking-widest text-faint">
-              Search café
-            </label>
-
-            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              {searching ? (
-                <Loader2 size={16} className="shrink-0 animate-spin text-muted" />
-              ) : (
-                <Search size={16} className="shrink-0 text-muted" />
-              )}
-
-              <input
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search cafés by name or area..."
-                className="w-full bg-transparent text-sm text-white outline-none placeholder:text-faint"
-              />
-            </div>
-
-            {results.length > 0 && (
-              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-white/10 bg-white/5">
-                {results.map((cafe, index) => (
-                  <button
-                    key={cafe.id ?? cafe.osm_place_id ?? `${cafe.name}-${index}`}
-                    onClick={() => {
-                      setSelectedCafe(cafe)
-                      setQuery(cafe.name)
-                    }}
-                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-white/10"
-                    type="button"
-                  >
-                    <MapPin size={14} className="mt-0.5 shrink-0 text-accent" />
-                    <div>
-                      <p className="text-sm font-medium text-white">{cafe.name}</p>
-                      <p className="text-xs text-muted">
-                        {[cafe.city, cafe.address].filter(Boolean).join(' · ')}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {showEmptyState && (
-              <p className="mt-3 text-center text-sm text-muted">
-                No cafés found yet. Try a more specific name or area.
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="mb-5 rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <MapPin size={14} className="mt-0.5 text-accent" />
-                <div>
-                  <p className="text-sm font-semibold text-white">
-                    {selectedCafe.name}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {[selectedCafe.city, selectedCafe.address].filter(Boolean).join(' · ')}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  setSelectedCafe(null)
-                  setQuery('')
-                }}
-                className="rounded-full p-1 hover:bg-white/10"
-                aria-label="Change café"
-                type="button"
-              >
-                <X size={14} className="text-muted" />
-              </button>
-            </div>
-
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs text-muted">
-              <div className="flex items-center gap-2">
-                {selectedCafe.brand_match_status === 'matched' ? (
-                  <CheckCircle2 size={14} className="text-emerald-400" />
-                ) : (
-                  <AlertCircle size={14} className="text-amber-400" />
-                )}
-                <span>
-                  {selectedCafe.brand_match_status === 'matched'
-                    ? 'Operator brand already linked for this café.'
-                    : 'Operator brand will be matched automatically after logging.'}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="mb-4">
-          <label className="mb-2 flex items-center gap-2 text-xs uppercase tracking-widest text-faint">
-            <CalendarDays size={12} />
-            <span>Date visited</span>
-          </label>
-          <input
-            type="date"
-            value={visitedAt}
-            max={new Date().toISOString().slice(0, 10)}
-            onChange={(e) => setVisitedAt(e.target.value)}
-            className="input w-full"
-          />
-        </div>
-
-        <div className="mb-6">
-          <label className="mb-2 block text-xs uppercase tracking-widest text-faint">
-            Note (optional)
-          </label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="What stood out?"
-            rows={3}
-            className="input w-full resize-none"
-          />
-        </div>
-
-        <div className="flex gap-3">
-          <button onClick={onClose} className="cta-secondary flex-1" type="button">
-            Cancel
-          </button>
-
-          <button
-            onClick={handleSubmit}
-            disabled={!selectedCafe || saving}
-            className="cta-primary flex-1 disabled:cursor-not-allowed disabled:opacity-60"
-            type="button"
-          >
-            {saving ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <>
-                <span>Log visit</span>
-                <ChevronRight size={16} />
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+      // If the café matched a brand and we have shelf brands to compare against,
+      // 
