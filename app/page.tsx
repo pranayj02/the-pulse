@@ -26,29 +26,44 @@ function formatTimestamp(value: string) {
   }).format(new Date(value))
 }
 
-function cardCopy(item: FeedItem) {
+type CardCopy = {
+  eyebrow: string
+  title: string
+  note: string | null
+  // Rendered as a ranked badge on visit cards — null for all other types
+  shelfRank: number | null
+  body: string | null
+}
+
+function cardCopy(item: FeedItem, isOwn: boolean): CardCopy {
   const name = actorName(item)
 
   if (item.type === 'visit') {
     return {
-      title: `${name} visited ${item.payload.cafeName ?? 'a café'}`,
-      body: item.payload.note ?? null,
       eyebrow: 'Visit',
+      title: `${name} visited ${item.payload.cafeName ?? 'a café'}`,
+      note: item.payload.note ?? null,
+      shelfRank: item.payload.shelfRank ?? null,
+      body: null,
     }
   }
 
   if (item.type === 'comparison') {
     return {
-      title: `${name} picked ${item.payload.winnerName ?? 'a winner'}`,
-      body: `${item.payload.brandAName ?? 'Brand A'} vs ${item.payload.brandBName ?? 'Brand B'}`,
       eyebrow: 'Face-off',
+      title: `${name} picked ${item.payload.winnerName ?? 'a winner'}`,
+      note: null,
+      shelfRank: null,
+      body: `${item.payload.brandAName ?? 'Brand A'} vs ${item.payload.brandBName ?? 'Brand B'}`,
     }
   }
 
   return {
-    title: `${name} earned ${item.payload.badgeSlug ?? 'a badge'}`,
-    body: null,
     eyebrow: 'Badge',
+    title: `${name} earned ${item.payload.badgeSlug ?? 'a badge'}`,
+    note: null,
+    shelfRank: null,
+    body: null,
   }
 }
 
@@ -151,9 +166,9 @@ export default async function HomePage({ searchParams }: PageProps) {
             </div>
           ) : (
             feed.items.map((item) => {
-              const copy = cardCopy(item)
               const isOwn = item.actor.id === feed.currentUser.id
               const profileHref = isOwn ? '/profile' : `/profile/${item.actor.id}`
+              const copy = cardCopy(item, isOwn)
 
               return (
                 <article
@@ -161,31 +176,55 @@ export default async function HomePage({ searchParams }: PageProps) {
                   className="rounded-[28px] border border-white/10 bg-white/5 p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
+
+                      {/* Eyebrow + You badge */}
                       <div className="flex items-center gap-2">
                         <p className="text-[11px] uppercase tracking-[0.16em] text-faint">
                           {copy.eyebrow}
                         </p>
-                        {isOwn ? (
+                        {isOwn && (
                           <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-faint">
                             You
                           </span>
-                        ) : null}
+                        )}
                       </div>
 
+                      {/* Title */}
                       <h3 className="mt-2 text-sm font-medium text-white">
                         <Link href={profileHref} className="hover:text-accent">
                           {copy.title}
                         </Link>
                       </h3>
 
-                      {copy.body ? (
-                        <p className="mt-2 text-sm text-muted">{copy.body}</p>
-                      ) : null}
+                      {/* Visit note */}
+                      {copy.note && (
+                        <p className="mt-2 text-sm italic text-muted">
+                          &ldquo;{copy.note}&rdquo;
+                        </p>
+                      )}
 
+                      {/* Comparison body (Brand A vs Brand B) */}
+                      {copy.body && (
+                        <p className="mt-2 text-sm text-muted">{copy.body}</p>
+                      )}
+
+                      {/* Shelf rank badge — only on visit items with a resolved rank */}
+                      {item.type === 'visit' && copy.shelfRank !== null && (
+                        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-3 py-1">
+                          <span className="text-xs font-semibold text-accent">
+                            #{copy.shelfRank}
+                          </span>
+                          <span className="text-xs text-muted">
+                            {isOwn ? 'on your shelf' : 'on their shelf'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Timestamp + city */}
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-faint">
                         <span>{formatTimestamp(item.ts)}</span>
-                        {item.actor.city ? <span>· {item.actor.city}</span> : null}
+                        {item.actor.city && <span>· {item.actor.city}</span>}
                       </div>
                     </div>
 
