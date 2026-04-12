@@ -294,15 +294,12 @@ export async function POST(request: Request) {
     const finalBrandIds = (finalCafeBrandsRes.data ?? []).map((row) => row.brand_id)
 
     // ── Seed shelf + build face-off queue ─────────────────────────────────────
-    // If the café matched to a brand, seed it on the shelf at default Elo score
-    // and return all other ranked brands so the client can run face-offs against them.
     const seededBrandId = resolvedCafe.primary_brand_id ?? null
     let faceoffCategoryId: string | null = null
-    let shelfBrands: Array<{ brandId: string; score: number }> = []
+    let seededBrandName: string | null = null
+    let shelfBrands: Array<{ brandId: string; score: number; brandName: string }> = []
 
     if (seededBrandId) {
-      // Demo-layer: coffee is the only live category right now.
-      // When multi-category ships, pass categorySlug in the request body instead.
       const { data: category } = await supabase
         .from('categories')
         .select('id')
@@ -312,8 +309,16 @@ export async function POST(request: Request) {
       if (category) {
         faceoffCategoryId = category.id
 
-        // Upsert with ignoreDuplicates: true so we never overwrite an existing
-        // score if the user has already ranked this brand through a prior visit.
+        // Fetch the seeded brand's display name for the carousel header
+        const { data: seededBrandRow } = await supabase
+          .from('brands')
+          .select('name')
+          .eq('id', seededBrandId)
+          .single()
+
+        seededBrandName = seededBrandRow?.name ?? null
+
+        // Seed shelf row — ignoreDuplicates preserves any existing Elo score
         await supabase
           .from('shelf_items')
           .upsert(
@@ -327,8 +332,8 @@ export async function POST(request: Request) {
             { onConflict: 'user_id,brand_id,category_id', ignoreDuplicates: true }
           )
 
-        // Fetch every other brand already on the shelf, ordered by score descending
-        // so the face-off carousel starts with the strongest opponents first.
+        // Fetch existing shelf brands ordered strongest-first so the carousel
+        // starts with the toughest opponents, creating the most signal early
         const { data: existingShelf } = await supabase
           .from('shelf_items')
           .select('brand_id, score')
@@ -337,9 +342,25 @@ export async function POST(request: Request) {
           .neq('brand_id', seededBrandId)
           .order('score', { ascending: false })
 
+        const shelfBrandIds = (existingShelf ?? []).map((r) => r.brand_id)
+
+        // Resolve brand names in one query rather than N individual lookups
+        let brandNameMap: Record<string, string> = {}
+        if (shelfBrandIds.length > 0) {
+          const { data: brandRows } = await supabase
+            .from('brands')
+            .select('id, name')
+            .in('id', shelfBrandIds)
+
+          brandNameMap = Object.fromEntries(
+            (brandRows ?? []).map((b) => [b.id, b.name])
+          )
+        }
+
         shelfBrands = (existingShelf ?? []).map((row) => ({
           brandId: row.brand_id,
           score: row.score,
+          brandName: brandNameMap[row.brand_id] ?? 'Unknown',
         }))
       }
     }
@@ -352,8 +373,9 @@ export async function POST(request: Request) {
       primaryBrandId: resolvedCafe.primary_brand_id,
       brandMatchStatus: resolvedCafe.brand_match_status ?? 'unmatched',
       brandIds: finalBrandIds,
-      // Consumed by LogVisitModal to trigger the post-visit face-off carousel
+      // Consumed by LogVisitModal to drive the post-visit face-off carousel
       seededBrandId,
+      seededBrandName,
       categoryId: faceoffCategoryId,
       shelfBrands,
     })
