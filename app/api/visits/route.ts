@@ -293,6 +293,58 @@ export async function POST(request: Request) {
 
     const finalBrandIds = (finalCafeBrandsRes.data ?? []).map((row) => row.brand_id)
 
+    // ── Seed shelf + build face-off queue ─────────────────────────────────────
+    // If the café matched to a brand, seed it on the shelf at default Elo score
+    // and return all other ranked brands so the client can run face-offs against them.
+    const seededBrandId = resolvedCafe.primary_brand_id ?? null
+    let faceoffCategoryId: string | null = null
+    let shelfBrands: Array<{ brandId: string; score: number }> = []
+
+    if (seededBrandId) {
+      // Demo-layer: coffee is the only live category right now.
+      // When multi-category ships, pass categorySlug in the request body instead.
+      const { data: category } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('slug', 'coffee')
+        .maybeSingle()
+
+      if (category) {
+        faceoffCategoryId = category.id
+
+        // Upsert with ignoreDuplicates: true so we never overwrite an existing
+        // score if the user has already ranked this brand through a prior visit.
+        await supabase
+          .from('shelf_items')
+          .upsert(
+            [{
+              user_id: user.id,
+              brand_id: seededBrandId,
+              category_id: faceoffCategoryId,
+              rank: 999,
+              score: 1200,
+            }],
+            { onConflict: 'user_id,brand_id,category_id', ignoreDuplicates: true }
+          )
+
+        // Fetch every other brand already on the shelf, ordered by score descending
+        // so the face-off carousel starts with the strongest opponents first.
+        const { data: existingShelf } = await supabase
+          .from('shelf_items')
+          .select('brand_id, score')
+          .eq('user_id', user.id)
+          .eq('category_id', faceoffCategoryId)
+          .neq('brand_id', seededBrandId)
+          .order('score', { ascending: false })
+
+        shelfBrands = (existingShelf ?? []).map((row) => ({
+          brandId: row.brand_id,
+          score: row.score,
+        }))
+      }
+    }
+    // ── End shelf seed ────────────────────────────────────────────────────────
+
     return NextResponse.json({
       success: true,
       visitId: visitInsertRes.data.id,
@@ -300,6 +352,10 @@ export async function POST(request: Request) {
       primaryBrandId: resolvedCafe.primary_brand_id,
       brandMatchStatus: resolvedCafe.brand_match_status ?? 'unmatched',
       brandIds: finalBrandIds,
+      // Consumed by LogVisitModal to trigger the post-visit face-off carousel
+      seededBrandId,
+      categoryId: faceoffCategoryId,
+      shelfBrands,
     })
   } catch (error) {
     console.error('POST /api/visits failed:', error)
