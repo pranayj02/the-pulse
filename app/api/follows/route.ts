@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import type { Database } from '@/lib/database.types'
 
 type FollowBody = {
   followingId?: string
 }
 
+type FollowInsert = Database['public']['Tables']['follows']['Insert']
+
 export async function POST(request: Request) {
   try {
-    const { followingId } = (await request.json()) as FollowBody
+    const body = (await request.json().catch(() => null)) as FollowBody | null
+    const followingId = body?.followingId
+
     if (!followingId) {
       return NextResponse.json({ error: 'followingId is required' }, { status: 400 })
     }
@@ -26,15 +31,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'You cannot follow yourself' }, { status: 400 })
     }
 
-    const { error } = await supabase.from('follows').upsert(
-      {
-        follower_id: user.id,
-        following_id: followingId,
-      },
-      {
-        onConflict: 'follower_id,following_id',
-      }
-    )
+    const payload: FollowInsert = {
+      follower_id: user.id,
+      following_id: followingId,
+    }
+
+    const { error } = await supabase.from('follows').upsert(payload, {
+      onConflict: 'follower_id,following_id',
+    })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
