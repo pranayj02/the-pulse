@@ -31,25 +31,32 @@ export default async function LeaderboardPage() {
     )
   }
 
-  const [{ data: currentProfile, error: currentProfileError }, { data: followingRows, error: followsError }] =
-    await Promise.all([
-      supabase
-        .from('profiles')
-        .select('id, city, full_name, username, xp, level')
-        .eq('id', user.id)
-        .single(),
-      supabase.from('follows').select('following_id').eq('follower_id', user.id),
-    ])
+  const [
+  { data: currentProfile, error: currentProfileError },
+  { data: followingRows, error: followsError },
+] = await Promise.all([
+  supabase
+    .from('profiles')
+    .select('id, city, full_name, username, xp, level')
+    .eq('id', user.id)
+    .single(),
 
-  if (currentProfileError) {
-    throw new Error(currentProfileError.message)
-  }
+  supabase
+    .from('follows')
+    .select('following_id')
+    .eq('follower_id', user.id)
+    .overrideTypes<Array<{ following_id: string }>>(),
+])
 
-  if (followsError) {
-    throw new Error(followsError.message)
-  }
+if (currentProfileError) {
+  throw new Error(currentProfileError.message)
+}
 
-  const followingSet = new Set((followingRows ?? []).map((row) => row.following_id))
+if (followsError) {
+  throw new Error(followsError.message)
+}
+
+const followingSet = new Set((followingRows ?? []).map((row) => row.following_id))
   const city = currentProfile?.city ?? 'Mumbai'
 
   const { data: leaderboard, error: leaderboardError } = await supabase
