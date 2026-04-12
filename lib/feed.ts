@@ -38,6 +38,52 @@ export type FeedResult = {
   items: FeedItem[]
 }
 
+type QueryError = {
+  message: string
+}
+
+type QueryResult<T> = {
+  data: T
+  error: QueryError | null
+}
+
+type FollowingRow = {
+  following_id: string
+}
+
+type CityRow = {
+  id: string
+}
+
+type VisitRow = {
+  id: string
+  user_id: string
+  note: string | null
+  visited_at: string
+  cafes: { name: string | null } | { name: string | null }[] | null
+}
+
+type ComparisonRow = {
+  id: string
+  user_id: string
+  created_at: string
+  brand_a_id: string
+  brand_b_id: string
+  winner_id: string
+}
+
+type BadgeRow = {
+  id: string
+  user_id: string
+  badge_slug: string | null
+  earned_at: string
+}
+
+type BrandRow = {
+  id: string
+  name: string
+}
+
 function unique(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)))
 }
@@ -63,22 +109,22 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
 
   if (!user) return null
 
-  const currentProfileRes = await supabase
+  const currentProfileRes = (await supabase
     .from('profiles')
     .select('id, username, full_name, avatar_url, city, level, xp')
     .eq('id', user.id)
-    .single()
+    .single()) as unknown as QueryResult<Actor | null>
 
   if (currentProfileRes.error || !currentProfileRes.data) {
     throw new Error(currentProfileRes.error?.message ?? 'Could not load profile')
   }
 
-  const currentUser = currentProfileRes.data as Actor
+  const currentUser = currentProfileRes.data
 
-  const followingRes = await supabase
+  const followingRes = (await supabase
     .from('follows')
     .select('following_id')
-    .eq('follower_id', user.id)
+    .eq('follower_id', user.id)) as unknown as QueryResult<FollowingRow[] | null>
 
   if (followingRes.error) {
     throw new Error(followingRes.error.message)
@@ -89,11 +135,11 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
   let cityIds: string[] = []
 
   if (currentUser.city) {
-    const cityRes = await supabase
+    const cityRes = (await supabase
       .from('profiles')
       .select('id')
       .eq('city', currentUser.city)
-      .limit(50)
+      .limit(50)) as unknown as QueryResult<CityRow[] | null>
 
     if (cityRes.error) {
       throw new Error(cityRes.error.message)
@@ -111,30 +157,38 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
 
   const scopedActorIds = actorIds.length > 0 ? actorIds : [user.id]
 
-  const [visitsRes, comparisonsRes, badgesRes, actorsRes] = await Promise.all([
+  const [visitsRaw, comparisonsRaw, badgesRaw, actorsRaw] = await Promise.all([
     supabase
       .from('cafe_visits')
       .select('id, user_id, note, visited_at, cafes(name)')
       .in('user_id', scopedActorIds)
       .order('visited_at', { ascending: false })
       .limit(40),
+
     supabase
       .from('comparisons')
       .select('id, user_id, created_at, brand_a_id, brand_b_id, winner_id')
       .in('user_id', scopedActorIds)
       .order('created_at', { ascending: false })
       .limit(40),
+
     supabase
       .from('user_badges')
       .select('id, user_id, badge_slug, earned_at')
       .in('user_id', scopedActorIds)
       .order('earned_at', { ascending: false })
       .limit(40),
+
     supabase
       .from('profiles')
       .select('id, username, full_name, avatar_url, city, level, xp')
       .in('id', unique([...scopedActorIds, user.id])),
   ])
+
+  const visitsRes = visitsRaw as unknown as QueryResult<VisitRow[] | null>
+  const comparisonsRes = comparisonsRaw as unknown as QueryResult<ComparisonRow[] | null>
+  const badgesRes = badgesRaw as unknown as QueryResult<BadgeRow[] | null>
+  const actorsRes = actorsRaw as unknown as QueryResult<Actor[] | null>
 
   if (visitsRes.error) throw new Error(visitsRes.error.message)
   if (comparisonsRes.error) throw new Error(comparisonsRes.error.message)
@@ -143,7 +197,7 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
 
   const actorMap = new Map<string, Actor>()
   for (const actor of actorsRes.data ?? []) {
-    actorMap.set(actor.id, actor as Actor)
+    actorMap.set(actor.id, actor)
   }
   actorMap.set(currentUser.id, currentUser)
 
@@ -157,10 +211,10 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
 
   const brandMap = new Map<string, string>()
   if (comparisonBrandIds.length > 0) {
-    const brandsRes = await supabase
+    const brandsRes = (await supabase
       .from('brands')
       .select('id, name')
-      .in('id', comparisonBrandIds)
+      .in('id', comparisonBrandIds)) as unknown as QueryResult<BrandRow[] | null>
 
     if (brandsRes.error) throw new Error(brandsRes.error.message)
 
