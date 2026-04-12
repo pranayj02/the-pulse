@@ -14,8 +14,12 @@ type LeaderboardProfile = {
   city: string | null
   full_name: string | null
   username: string | null
-  xp: number
+  xp: number | null
   level: string | null
+}
+
+type FollowingRow = {
+  following_id: string
 }
 
 export default async function LeaderboardPage() {
@@ -49,13 +53,13 @@ export default async function LeaderboardPage() {
       .select('id, city, full_name, username, xp, level')
       .eq('id', user.id)
       .single()
-      .overrideTypes<LeaderboardProfile>(),
+      .overrideTypes<LeaderboardProfile, { merge: false }>(),
 
     supabase
       .from('follows')
       .select('following_id')
       .eq('follower_id', user.id)
-      .overrideTypes<Array<{ following_id: string }>>(),
+      .overrideTypes<FollowingRow[], { merge: false }>(),
   ])
 
   if (currentProfileError) {
@@ -75,7 +79,7 @@ export default async function LeaderboardPage() {
     .eq('city', city)
     .order('xp', { ascending: false })
     .limit(50)
-    .overrideTypes<LeaderboardProfile[]>()
+    .overrideTypes<LeaderboardProfile[], { merge: false }>()
 
   if (leaderboardError) {
     throw new Error(leaderboardError.message)
