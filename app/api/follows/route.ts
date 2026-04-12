@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       following_id: followingId,
     }
 
-    const { error } = await supabase.from('follows').upsert(payload, {
+    const { error } = await supabase.from('follows').upsert(payload as never, {
       onConflict: 'follower_id,following_id',
     })
 
