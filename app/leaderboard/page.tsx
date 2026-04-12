@@ -9,6 +9,15 @@ const activeCategory = {
   name: 'Coffee',
 }
 
+type LeaderboardProfile = {
+  id: string
+  city: string | null
+  full_name: string | null
+  username: string | null
+  xp: number
+  level: string | null
+}
+
 export default async function LeaderboardPage() {
   const supabase = await createSupabaseServerClient()
 
@@ -32,31 +41,32 @@ export default async function LeaderboardPage() {
   }
 
   const [
-  { data: currentProfile, error: currentProfileError },
-  { data: followingRows, error: followsError },
-] = await Promise.all([
-  supabase
-    .from('profiles')
-    .select('id, city, full_name, username, xp, level')
-    .eq('id', user.id)
-    .single(),
+    { data: currentProfile, error: currentProfileError },
+    { data: followingRows, error: followsError },
+  ] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, city, full_name, username, xp, level')
+      .eq('id', user.id)
+      .single()
+      .overrideTypes<LeaderboardProfile>(),
 
-  supabase
-    .from('follows')
-    .select('following_id')
-    .eq('follower_id', user.id)
-    .overrideTypes<Array<{ following_id: string }>>(),
-])
+    supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', user.id)
+      .overrideTypes<Array<{ following_id: string }>>(),
+  ])
 
-if (currentProfileError) {
-  throw new Error(currentProfileError.message)
-}
+  if (currentProfileError) {
+    throw new Error(currentProfileError.message)
+  }
 
-if (followsError) {
-  throw new Error(followsError.message)
-}
+  if (followsError) {
+    throw new Error(followsError.message)
+  }
 
-const followingSet = new Set((followingRows ?? []).map((row) => row.following_id))
+  const followingSet = new Set((followingRows ?? []).map((row) => row.following_id))
   const city = currentProfile?.city ?? 'Mumbai'
 
   const { data: leaderboard, error: leaderboardError } = await supabase
@@ -65,6 +75,7 @@ const followingSet = new Set((followingRows ?? []).map((row) => row.following_id
     .eq('city', city)
     .order('xp', { ascending: false })
     .limit(50)
+    .overrideTypes<LeaderboardProfile[]>()
 
   if (leaderboardError) {
     throw new Error(leaderboardError.message)
