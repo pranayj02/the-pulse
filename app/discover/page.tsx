@@ -22,6 +22,14 @@ type MapPlace = {
   address?: string | null
 }
 
+// Takes the first segment of a potentially long address string so that OSM
+// full display_names like "Chapel Road, Ranwar Village Square, H/W Ward..."
+// render as just "Chapel Road" in the list.
+function shortAddress(city: string | null, address: string | null): string {
+  const neighbourhood = address?.split(',')[0]?.trim() ?? null
+  return [city, neighbourhood].filter(Boolean).join(' · ')
+}
+
 export default function DiscoverPage() {
   const supabase = useMemo(() => createClient(), [])
   const [showVisitModal, setShowVisitModal] = useState(false)
@@ -51,15 +59,15 @@ export default function DiscoverPage() {
 
         if (user?.id) {
           const profileRes = await supabase
-          .from('profiles')
-          .select('city')
-          .eq('id', user.id)
-          .maybeSingle()
-        
-        if (profileRes.error) throw profileRes.error
-        
-        const profileData = profileRes.data as { city: string | null } | null
-        userCity = profileData ? profileData.city : null
+            .from('profiles')
+            .select('city')
+            .eq('id', user.id)
+            .maybeSingle()
+
+          if (profileRes.error) throw profileRes.error
+
+          const profileData = profileRes.data as { city: string | null } | null
+          userCity = profileData ? profileData.city : null
         }
 
         let cafesQuery = supabase
@@ -87,32 +95,32 @@ export default function DiscoverPage() {
         if (!mounted) return
 
         type CafeRow = {
-  id: string
-  name: string
-  lat: number | null
-  lng: number | null
-  city: string | null
-  address: string | null
-}
+          id: string
+          name: string
+          lat: number | null
+          lng: number | null
+          city: string | null
+          address: string | null
+        }
 
-const cafeRows = (cafesRes.data ?? []) as CafeRow[]
+        const cafeRows = (cafesRes.data ?? []) as CafeRow[]
 
-const mappedPlaces: MapPlace[] = cafeRows
-  .filter(
-    (cafe): cafe is CafeRow & { lat: number; lng: number } =>
-      typeof cafe.lat === 'number' &&
-      Number.isFinite(cafe.lat) &&
-      typeof cafe.lng === 'number' &&
-      Number.isFinite(cafe.lng)
-  )
-  .map((cafe) => ({
-    id: cafe.id,
-    name: cafe.name,
-    lat: cafe.lat,
-    lng: cafe.lng,
-    city: cafe.city ?? null,
-    address: cafe.address ?? null,
-  }))
+        const mappedPlaces: MapPlace[] = cafeRows
+          .filter(
+            (cafe): cafe is CafeRow & { lat: number; lng: number } =>
+              typeof cafe.lat === 'number' &&
+              Number.isFinite(cafe.lat) &&
+              typeof cafe.lng === 'number' &&
+              Number.isFinite(cafe.lng)
+          )
+          .map((cafe) => ({
+            id: cafe.id,
+            name: cafe.name,
+            lat: cafe.lat,
+            lng: cafe.lng,
+            city: cafe.city ?? null,
+            address: cafe.address ?? null,
+          }))
 
         setPlaces(mappedPlaces)
         setCity(userCity || mappedPlaces[0]?.city || 'Your city')
@@ -200,24 +208,25 @@ const mappedPlaces: MapPlace[] = cafeRows
                   nearbyPlaces.map((place) => (
                     <div
                       key={place.id}
-                      className="flex items-center justify-between px-4 py-3 transition hover:bg-white/5"
+                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-white/5"
                     >
-                      <div className="min-w-0 flex items-center gap-3">
-                        <MapPin size={14} className="shrink-0 text-accent" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-white">
-                            {place.name}
-                          </p>
-                          <p className="truncate text-xs text-muted">
-                            {[place.city, place.address].filter(Boolean).join(' · ')}
-                          </p>
-                        </div>
+                      <MapPin size={14} className="shrink-0 text-accent" />
+
+                      {/* min-w-0 + overflow-hidden on this wrapper is what
+                          allows truncate to work on the children */}
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <p className="truncate text-sm font-medium text-white">
+                          {place.name}
+                        </p>
+                        <p className="truncate text-xs text-muted">
+                          {shortAddress(place.city, place.address)}
+                        </p>
                       </div>
 
                       <button
                         type="button"
                         onClick={() => setShowVisitModal(true)}
-                        className="pill text-xs transition hover:border-accent/40 hover:text-white"
+                        className="pill shrink-0 text-xs transition hover:border-accent/40 hover:text-white"
                       >
                         Log visit
                       </button>
