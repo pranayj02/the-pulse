@@ -20,8 +20,7 @@ export type FeedItem = {
   payload: {
     cafeName?: string | null
     note?: string | null
-    // shelfRank is the actor's current rank for the brand linked to this visit.
-    // Null when the café is unmatched or the brand isn't on the shelf yet.
+    visitedAt?: string | null
     shelfRank?: number | null
     badgeSlug?: string | null
     brandAName?: string | null
@@ -57,12 +56,12 @@ type CityRow = {
   id: string
 }
 
-// primary_brand_id added so we can look up the shelf rank per visit
 type VisitRow = {
   id: string
   user_id: string
   note: string | null
   visited_at: string
+  created_at: string
   cafes:
     | { name: string | null; primary_brand_id: string | null }
     | { name: string | null; primary_brand_id: string | null }[]
@@ -169,13 +168,12 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
 
   const scopedActorIds = actorIds.length > 0 ? actorIds : [user.id]
 
-  // primary_brand_id added to cafes join — needed to resolve shelf rank
   const [visitsRaw, comparisonsRaw, badgesRaw, actorsRaw] = await Promise.all([
     supabase
       .from('cafe_visits')
-      .select('id, user_id, note, visited_at, cafes(name, primary_brand_id)')
+      .select('id, user_id, note, visited_at, created_at, cafes(name, primary_brand_id)')
       .in('user_id', scopedActorIds)
-      .order('visited_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(40),
 
     supabase
@@ -223,7 +221,6 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
     ])
   )
 
-  // Collect brand IDs that appear as primary_brand_id on visited cafés
   const visitBrandIds = unique(
     (visitsRes.data ?? [])
       .map((row) => {
@@ -250,9 +247,7 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
   }
 
   // ── Shelf rank lookup ──────────────────────────────────────────────────────
-  // Key format: `${userId}:${brandId}` → rank
-  // We fetch a superset (.in user_ids AND .in brand_ids) and filter client-side.
-  // This is one query regardless of how many visits are in the feed.
+  // Key: `${userId}:${brandId}` → rank
   const shelfRankMap = new Map<string, number>()
 
   const visitUserIds = unique(
@@ -279,6 +274,9 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
   }
   // ── End shelf rank lookup ──────────────────────────────────────────────────
 
+  // Use created_at as the sort timestamp so ordering is always precise —
+  // visited_at is user-supplied and collapses to noon UTC when only a date
+  // is provided, causing ties and arbitrary ordering on the same day.
   const visitItems: FeedItem[] = (visitsRes.data ?? []).map((row) => {
     const cafe = row.cafes && !Array.isArray(row.cafes) ? row.cafes : null
     const brandId = cafe?.primary_brand_id ?? null
@@ -289,11 +287,12 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
     return {
       id: row.id,
       type: 'visit',
-      ts: row.visited_at,
+      ts: row.created_at,
       actor: actorMap.get(row.user_id) ?? fallbackActor(row.user_id),
       payload: {
         cafeName: cafe?.name ?? 'Unknown café',
         note: row.note,
+        visitedAt: row.visited_at,
         shelfRank,
       },
     }
