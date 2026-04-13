@@ -20,10 +20,12 @@ type NominatimPlace = {
   lat: string
   lon: string
   address?: {
+    road?: string
+    suburb?: string
+    neighbourhood?: string
     city?: string
     town?: string
     village?: string
-    suburb?: string
     state_district?: string
     state?: string
   }
@@ -42,6 +44,42 @@ function escapeIlike(value: string) {
   return value.replace(/[%_,]/g, '').trim()
 }
 
+// Build a short 2-part address from Nominatim's structured address object.
+// Falls back to the second segment of display_name if no components exist.
+function buildShortAddress(place: NominatimPlace): string | null {
+  const neighbourhood =
+    place.address?.suburb ||
+    place.address?.neighbourhood ||
+    place.address?.road ||
+    null
+
+  const city =
+    place.address?.city ||
+    place.address?.town ||
+    place.address?.village ||
+    place.address?.state_district ||
+    null
+
+  const parts = [neighbourhood, city].filter(Boolean)
+  if (parts.length > 0) return parts.join(', ')
+
+  // Fallback: second segment of display_name only
+  const second = place.display_name.split(',')[1]?.trim() ?? null
+  return second
+}
+
+function extractCity(place: NominatimPlace) {
+  return (
+    place.address?.city ||
+    place.address?.town ||
+    place.address?.village ||
+    place.address?.suburb ||
+    place.address?.state_district ||
+    place.address?.state ||
+    null
+  )
+}
+
 function dedupeCafeResults(items: CafeSearchResult[]) {
   const seen = new Set<string>()
 
@@ -56,16 +94,14 @@ function dedupeCafeResults(items: CafeSearchResult[]) {
   })
 }
 
-function extractCity(place: NominatimPlace) {
-  return (
-    place.address?.city ||
-    place.address?.town ||
-    place.address?.village ||
-    place.address?.suburb ||
-    place.address?.state_district ||
-    place.address?.state ||
-    null
-  )
+// Strip common suffixes so "Subko Speciality Coffee Roasters and Bakehouse"
+// and "Subko" both normalize to "subko" and the Nominatim dupe is dropped.
+function normalizeBrandName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b(coffee|cafe|café|roasters|roastery|speciality|specialty|bakehouse|espresso|bar|outlet|store|and)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function mapDbCafe(cafe: CafeRowForSearch): CafeSearchResult {
@@ -196,6 +232,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ cafes: dbResults.slice(0, 12) })
     }
 
+    // Build a set of normalized DB names so Nominatim dupes can be dropped
+    const dbNormalizedNames = new Set(dbResults.map((r) => normalizeBrandName(r.name)))
+
     const nominatimQuery = userCity ? `${rawQ} cafe ${userCity}` : `${rawQ} cafe`
     let nominatimResults: CafeSearchResult[] = []
 
@@ -221,16 +260,23 @@ export async function GET(request: Request) {
       if (nominatimRes.ok) {
         const places = (await nominatimRes.json()) as NominatimPlace[]
 
-        nominatimResults = places.map((place) => ({
-          id: null,
-          osm_place_id: String(place.place_id),
-          name: place.display_name.split(',')[0]?.trim() || 'Unknown Cafe',
-          city: extractCity(place),
-          address: place.display_name,
-          lat: Number(place.lat),
-          lng: Number(place.lon),
-          source: 'nominatim',
-        }))
+        nominatimResults = places
+          .map((place) => {
+            const name = place.display_name.split(',')[0]?.trim() || 'Unknown Cafe'
+            return {
+              id: null,
+              osm_place_id: String(place.place_id),
+              name,
+              city: extractCity(place),
+              // Short address built from structured components — never the raw display_name
+              address: buildShortAddress(place),
+              lat: Number(place.lat),
+              lng: Number(place.lon),
+              source: 'nominatim' as const,
+            }
+          })
+          // Drop Nominatim results whose normalized name already exists in the DB
+          .filter((result) => !dbNormalizedNames.has(normalizeBrandName(result.name)))
       }
     } catch (error) {
       console.error('Nominatim lookup failed:', error)
