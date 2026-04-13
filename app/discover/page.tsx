@@ -25,7 +25,7 @@ type MapPlace = {
 // Takes the first segment of a potentially long address string so that OSM
 // full display_names like "Chapel Road, Ranwar Village Square, H/W Ward..."
 // render as just "Chapel Road" in the list.
-function shortAddress(city: string | null, address: string | null): string {
+function shortAddress(city: string | null | undefined, address: string | null | undefined): string {
   const neighbourhood = address?.split(',')[0]?.trim() ?? null
   return [city, neighbourhood].filter(Boolean).join(' · ')
 }
