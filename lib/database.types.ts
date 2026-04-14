@@ -293,31 +293,40 @@ export type Database = {
       }
       comparisons: {
         Row: {
-          brand_a_id: string
-          brand_b_id: string
+          brand_a_id: string | null
+          brand_b_id: string | null
+          cafe_a_id: string | null
+          cafe_b_id: string | null
           category_id: string
           created_at: string
           id: string
           user_id: string
-          winner_id: string
+          winner_cafe_id: string | null
+          winner_id: string | null
         }
         Insert: {
-          brand_a_id: string
-          brand_b_id: string
+          brand_a_id?: string | null
+          brand_b_id?: string | null
+          cafe_a_id?: string | null
+          cafe_b_id?: string | null
           category_id: string
           created_at?: string
           id?: string
           user_id: string
-          winner_id: string
+          winner_cafe_id?: string | null
+          winner_id?: string | null
         }
         Update: {
-          brand_a_id?: string
-          brand_b_id?: string
+          brand_a_id?: string | null
+          brand_b_id?: string | null
+          cafe_a_id?: string | null
+          cafe_b_id?: string | null
           category_id?: string
           created_at?: string
           id?: string
           user_id?: string
-          winner_id?: string
+          winner_cafe_id?: string | null
+          winner_id?: string | null
         }
         Relationships: [
           {
@@ -335,6 +344,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "comparisons_cafe_a_id_fkey"
+            columns: ["cafe_a_id"]
+            isOneToOne: false
+            referencedRelation: "cafes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comparisons_cafe_b_id_fkey"
+            columns: ["cafe_b_id"]
+            isOneToOne: false
+            referencedRelation: "cafes"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "comparisons_category_id_fkey"
             columns: ["category_id"]
             isOneToOne: false
@@ -346,6 +369,13 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comparisons_winner_cafe_id_fkey"
+            columns: ["winner_cafe_id"]
+            isOneToOne: false
+            referencedRelation: "cafes"
             referencedColumns: ["id"]
           },
           {
@@ -434,9 +464,12 @@ export type Database = {
       }
       shelf_items: {
         Row: {
-          brand_id: string
+          brand_id: string | null
+          cafe_id: string | null
           category_id: string
+          comparisons_count: number
           created_at: string
+          display_name: string | null
           id: string
           quick_review: string | null
           rank: number
@@ -445,9 +478,12 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          brand_id: string
+          brand_id?: string | null
+          cafe_id?: string | null
           category_id: string
+          comparisons_count?: number
           created_at?: string
+          display_name?: string | null
           id?: string
           quick_review?: string | null
           rank?: number
@@ -456,9 +492,12 @@ export type Database = {
           user_id: string
         }
         Update: {
-          brand_id?: string
+          brand_id?: string | null
+          cafe_id?: string | null
           category_id?: string
+          comparisons_count?: number
           created_at?: string
+          display_name?: string | null
           id?: string
           quick_review?: string | null
           rank?: number
@@ -472,6 +511,13 @@ export type Database = {
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shelf_items_cafe_id_fkey"
+            columns: ["cafe_id"]
+            isOneToOne: false
+            referencedRelation: "cafes"
             referencedColumns: ["id"]
           },
           {
