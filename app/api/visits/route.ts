@@ -34,6 +34,13 @@ type CafeRow = {
   brand_match_status: 'matched' | 'pending' | 'unmatched' | null
 }
 
+type ShelfCafe = {
+  cafeId: string
+  displayName: string
+  score: number
+  rank: number
+}
+
 function normalizeText(value: string | null | undefined) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
@@ -41,14 +48,11 @@ function normalizeText(value: string | null | undefined) {
 
 function normalizeVisitedAt(value: string | null | undefined) {
   if (!value) return new Date().toISOString()
-
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return new Date(`${value}T12:00:00.000Z`).toISOString()
   }
-
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return new Date().toISOString()
-
   return parsed.toISOString()
 }
 
@@ -61,10 +65,7 @@ function normalizeForMatch(value: string | null | undefined) {
     .toLowerCase()
     .replace(/[|,()\-]/g, ' ')
     .replace(/\b(coffee|cafe|café|roasters|roastery|espresso|bar|outlet|store)\b/g, ' ')
-    .replace(
-      /\b(fort|worli|bandra|nariman point|kala ghoda|churchgate|andheri|juhu|powai|colaba)\b/g,
-      ' '
-    )
+    .replace(/\b(fort|worli|bandra|nariman point|kala ghoda|churchgate|andheri|juhu|powai|colaba)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -75,12 +76,10 @@ function scoreBrandMatch(cafeName: string, brand: BrandRow) {
   const slugNorm = normalizeForMatch(brand.slug)
 
   if (!cafeNorm || (!brandNorm && !slugNorm)) return 0
-
   if (cafeNorm === brandNorm || (slugNorm && cafeNorm === slugNorm)) return 1
   if (brandNorm && cafeNorm.startsWith(brandNorm)) return 0.96
   if (brandNorm && cafeNorm.includes(brandNorm)) return 0.92
   if (slugNorm && cafeNorm.includes(slugNorm)) return 0.9
-
   return 0
 }
 
@@ -88,34 +87,25 @@ async function findBestBrandMatch(
   supabase: SupabaseClient<Database>,
   cafeName: string
 ): Promise<{ brandId: string | null; status: 'matched' | 'pending' | 'unmatched' }> {
-  const brandsRes = await supabase
-    .from('brands')
-    .select('id, name, slug')
-    .eq('is_active', true)
-
-  if (brandsRes.error) {
-    throw new Error(brandsRes.error.message)
-  }
+  const brandsRes = await supabase.from('brands').select('id, name, slug').eq('is_active', true)
+  if (brandsRes.error) throw new Error(brandsRes.error.message)
 
   const brands = (brandsRes.data ?? []) as BrandRow[]
   let best: { brandId: string | null; score: number } = { brandId: null, score: 0 }
 
   for (const brand of brands) {
     const score = scoreBrandMatch(cafeName, brand)
-    if (score > best.score) {
-      best = { brandId: brand.id, score }
-    }
+    if (score > best.score) best = { brandId: brand.id, score }
   }
 
-  if (best.brandId && best.score >= 0.95) {
-    return { brandId: best.brandId, status: 'matched' }
-  }
-
-  if (best.brandId && best.score >= 0.9) {
-    return { brandId: best.brandId, status: 'pending' }
-  }
-
+  if (best.brandId && best.score >= 0.95) return { brandId: best.brandId, status: 'matched' }
+  if (best.brandId && best.score >= 0.9) return { brandId: best.brandId, status: 'pending' }
   return { brandId: null, status: 'unmatched' }
+}
+
+// Builds a short display name for the shelf card
+function buildDisplayName(cafe: CafeRow): string {
+  return [cafe.name, cafe.city].filter(Boolean).join(' · ')
 }
 
 export async function POST(request: Request) {
@@ -139,22 +129,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // ── Resolve cafe ──────────────────────────────────────────────────────────
     let resolvedCafeId = cafeId || cafe?.id || null
     let resolvedCafe: CafeRow | null = null
 
     if (!resolvedCafeId && cafe?.osm_place_id) {
-      const existingCafeRes = await supabase
+      const existingRes = await supabase
         .from('cafes')
         .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
         .eq('osm_place_id', cafe.osm_place_id)
         .maybeSingle()
 
-      if (existingCafeRes.error) {
-        return NextResponse.json({ error: existingCafeRes.error.message }, { status: 500 })
-      }
-
-      if (existingCafeRes.data) {
-        resolvedCafe = existingCafeRes.data as CafeRow
+      if (existingRes.error) return NextResponse.json({ error: existingRes.error.message }, { status: 500 })
+      if (existingRes.data) {
+        resolvedCafe = existingRes.data as CafeRow
         resolvedCafeId = resolvedCafe.id
       }
     }
@@ -166,13 +154,11 @@ export async function POST(request: Request) {
         .eq('id', resolvedCafeId)
         .maybeSingle()
 
-      if (cafeRes.error) {
-        return NextResponse.json({ error: cafeRes.error.message }, { status: 500 })
-      }
-
+      if (cafeRes.error) return NextResponse.json({ error: cafeRes.error.message }, { status: 500 })
       resolvedCafe = (cafeRes.data as CafeRow | null) ?? null
     }
 
+    // ── Create cafe if not found ───────────────────────────────────────────────
     if (!resolvedCafeId) {
       const name = normalizeText(cafe?.name)
       const city = normalizeText(cafe?.city)
@@ -182,10 +168,7 @@ export async function POST(request: Request) {
 
       if (!name || !city || !address || !isFiniteNumber(lat) || !isFiniteNumber(lng)) {
         return NextResponse.json(
-          {
-            error:
-              'Selected café is missing required location details. Please choose a result from search.',
-          },
+          { error: 'Selected café is missing required location details. Please choose a result from search.' },
           { status: 400 }
         )
       }
@@ -207,23 +190,37 @@ export async function POST(request: Request) {
         .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
         .single()
 
-      if (insertCafeRes.error) {
-        return NextResponse.json({ error: insertCafeRes.error.message }, { status: 500 })
-      }
+      if (insertCafeRes.error) return NextResponse.json({ error: insertCafeRes.error.message }, { status: 500 })
 
       resolvedCafe = insertCafeRes.data as CafeRow
       resolvedCafeId = resolvedCafe.id
 
       if (match.brandId) {
-        const insertCafeBrandRes = await supabase
+        await supabase
           .from('cafe_brands')
-          .upsert(
-            [{ cafe_id: resolvedCafeId, brand_id: match.brandId }],
-            { onConflict: 'cafe_id,brand_id' }
-          )
+          .upsert([{ cafe_id: resolvedCafeId, brand_id: match.brandId }], { onConflict: 'cafe_id,brand_id' })
+      }
+    }
 
-        if (insertCafeBrandRes.error) {
-          return NextResponse.json({ error: insertCafeBrandRes.error.message }, { status: 500 })
+    // ── Re-attempt brand match for existing unmatched cafes ───────────────────
+    if (!resolvedCafe!.primary_brand_id && resolvedCafe!.name) {
+      const match = await findBestBrandMatch(supabase, resolvedCafe!.name)
+
+      if (match.brandId || match.status !== resolvedCafe!.brand_match_status) {
+        const updateRes = await supabase
+          .from('cafes')
+          .update({ primary_brand_id: match.brandId, brand_match_status: match.status })
+          .eq('id', resolvedCafeId!)
+          .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
+          .single()
+
+        if (updateRes.error) return NextResponse.json({ error: updateRes.error.message }, { status: 500 })
+        resolvedCafe = updateRes.data as CafeRow
+
+        if (match.brandId) {
+          await supabase
+            .from('cafe_brands')
+            .upsert([{ cafe_id: resolvedCafeId!, brand_id: match.brandId }], { onConflict: 'cafe_id,brand_id' })
         }
       }
     }
@@ -232,41 +229,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Could not resolve café.' }, { status: 500 })
     }
 
-    if (!resolvedCafe.primary_brand_id && resolvedCafe.name) {
-      const match = await findBestBrandMatch(supabase, resolvedCafe.name)
-
-      if (match.brandId || match.status !== resolvedCafe.brand_match_status) {
-        const updateCafeRes = await supabase
-          .from('cafes')
-          .update({
-            primary_brand_id: match.brandId,
-            brand_match_status: match.status,
-          })
-          .eq('id', resolvedCafeId)
-          .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
-          .single()
-
-        if (updateCafeRes.error) {
-          return NextResponse.json({ error: updateCafeRes.error.message }, { status: 500 })
-        }
-
-        resolvedCafe = updateCafeRes.data as CafeRow
-
-        if (match.brandId) {
-          const upsertCafeBrandRes = await supabase
-            .from('cafe_brands')
-            .upsert(
-              [{ cafe_id: resolvedCafeId, brand_id: match.brandId }],
-              { onConflict: 'cafe_id,brand_id' }
-            )
-
-          if (upsertCafeBrandRes.error) {
-            return NextResponse.json({ error: upsertCafeBrandRes.error.message }, { status: 500 })
-          }
-        }
-      }
-    }
-
+    // ── Log visit ─────────────────────────────────────────────────────────────
     const visitInsertRes = await supabase
       .from('cafe_visits')
       .insert({
@@ -293,76 +256,53 @@ export async function POST(request: Request) {
 
     const finalBrandIds = (finalCafeBrandsRes.data ?? []).map((row) => row.brand_id)
 
-    // ── Seed shelf + build face-off queue ─────────────────────────────────────
-    const seededBrandId = resolvedCafe.primary_brand_id ?? null
+    // ── Seed shelf + build binary search queue ────────────────────────────────
+    const displayName = buildDisplayName(resolvedCafe)
     let faceoffCategoryId: string | null = null
-    let seededBrandName: string | null = null
-    let shelfBrands: Array<{ brandId: string; score: number; brandName: string }> = []
+    let shelfCafes: ShelfCafe[] = []
 
-    if (seededBrandId) {
-      const { data: category } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('slug', 'coffee')
-        .maybeSingle()
+    const { data: category } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('slug', 'coffee')
+      .maybeSingle()
 
-      if (category) {
-        faceoffCategoryId = category.id
+    if (category) {
+      faceoffCategoryId = category.id
 
-        // Fetch the seeded brand's display name for the carousel header
-        const { data: seededBrandRow } = await supabase
-          .from('brands')
-          .select('name')
-          .eq('id', seededBrandId)
-          .single()
+      // Seed the shelf entry by cafe_id — always works regardless of brand match.
+      // ignoreDuplicates preserves any existing Elo score from prior visits.
+      await supabase
+        .from('shelf_items')
+        .upsert(
+          [{
+            user_id: user.id,
+            cafe_id: resolvedCafeId,
+            brand_id: resolvedCafe.primary_brand_id ?? null,
+            category_id: faceoffCategoryId,
+            display_name: displayName,
+            rank: 999,
+            score: 1200,
+          }],
+          { onConflict: 'user_id,cafe_id', ignoreDuplicates: true }
+        )
 
-        seededBrandName = seededBrandRow?.name ?? null
+      // Fetch rest of shelf sorted rank ASC — this is the sorted array the
+      // binary search will use as its search space.
+      const { data: existingShelf } = await supabase
+        .from('shelf_items')
+        .select('cafe_id, score, rank, display_name')
+        .eq('user_id', user.id)
+        .eq('category_id', faceoffCategoryId)
+        .neq('cafe_id', resolvedCafeId)
+        .order('rank', { ascending: true })
 
-        // Seed shelf row — ignoreDuplicates preserves any existing Elo score
-        await supabase
-          .from('shelf_items')
-          .upsert(
-            [{
-              user_id: user.id,
-              brand_id: seededBrandId,
-              category_id: faceoffCategoryId,
-              rank: 999,
-              score: 1200,
-            }],
-            { onConflict: 'user_id,brand_id,category_id', ignoreDuplicates: true }
-          )
-
-        // Fetch existing shelf brands ordered strongest-first so the carousel
-        // starts with the toughest opponents, creating the most signal early
-        const { data: existingShelf } = await supabase
-          .from('shelf_items')
-          .select('brand_id, score')
-          .eq('user_id', user.id)
-          .eq('category_id', faceoffCategoryId)
-          .neq('brand_id', seededBrandId)
-          .order('score', { ascending: false })
-
-        const shelfBrandIds = (existingShelf ?? []).map((r) => r.brand_id)
-
-        // Resolve brand names in one query rather than N individual lookups
-        let brandNameMap: Record<string, string> = {}
-        if (shelfBrandIds.length > 0) {
-          const { data: brandRows } = await supabase
-            .from('brands')
-            .select('id, name')
-            .in('id', shelfBrandIds)
-
-          brandNameMap = Object.fromEntries(
-            (brandRows ?? []).map((b) => [b.id, b.name])
-          )
-        }
-
-        shelfBrands = (existingShelf ?? []).map((row) => ({
-          brandId: row.brand_id,
-          score: row.score,
-          brandName: brandNameMap[row.brand_id] ?? 'Unknown',
-        }))
-      }
+      shelfCafes = (existingShelf ?? []).map((row) => ({
+        cafeId: row.cafe_id,
+        score: row.score ?? 1200,
+        rank: row.rank ?? 999,
+        displayName: row.display_name ?? 'Unknown café',
+      }))
     }
     // ── End shelf seed ────────────────────────────────────────────────────────
 
@@ -370,14 +310,12 @@ export async function POST(request: Request) {
       success: true,
       visitId: visitInsertRes.data.id,
       cafeId: resolvedCafeId,
+      cafeDisplayName: displayName,
       primaryBrandId: resolvedCafe.primary_brand_id,
       brandMatchStatus: resolvedCafe.brand_match_status ?? 'unmatched',
       brandIds: finalBrandIds,
-      // Consumed by LogVisitModal to drive the post-visit face-off carousel
-      seededBrandId,
-      seededBrandName,
       categoryId: faceoffCategoryId,
-      shelfBrands,
+      shelfCafes,  // sorted by rank ASC — consumed by binary search in LogVisitModal
     })
   } catch (error) {
     console.error('POST /api/visits failed:', error)
