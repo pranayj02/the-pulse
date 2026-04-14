@@ -15,6 +15,8 @@ import {
   SkipForward,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { initBS, advanceBS, getCurrentOpponent } from '@/lib/faceoff-queue'
+import type { BSState, ShelfCafe } from '@/lib/faceoff-queue'
 
 type SearchCafeResult = {
   id?: string | null
@@ -26,12 +28,6 @@ type SearchCafeResult = {
   lng?: number | null
   primary_brand_id?: string | null
   brand_match_status?: 'matched' | 'pending' | 'unmatched' | null
-}
-
-type ShelfBrand = {
-  brandId: string
-  score: number
-  brandName: string
 }
 
 type Phase = 'form' | 'faceoff' | 'done'
@@ -48,13 +44,12 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
   const [visitedAt, setVisitedAt] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
 
-  // ── Face-off carousel state ────────────────────────────────────────────────
+  // ── Face-off state ─────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('form')
-  const [seededBrandId, setSeededBrandId] = useState<string | null>(null)
-  const [seededBrandName, setSeededBrandName] = useState<string | null>(null)
+  const [seededCafeId, setSeededCafeId] = useState<string | null>(null)
+  const [seededDisplayName, setSeededDisplayName] = useState<string | null>(null)
   const [categoryId, setCategoryId] = useState<string | null>(null)
-  const [faceoffQueue, setFaceoffQueue] = useState<ShelfBrand[]>([])
-  const [faceoffIndex, setFaceoffIndex] = useState(0)
+  const [bsState, setBsState] = useState<BSState | null>(null)
   const [faceoffLoading, setFaceoffLoading] = useState(false)
   const [finalRank, setFinalRank] = useState<number | null>(null)
 
@@ -62,9 +57,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
 
   // ── Keyboard close ─────────────────────────────────────────────────────────
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
@@ -72,21 +65,17 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
   // ── Initial café list ──────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true
-
-    async function loadInitialResults() {
+    async function load() {
       try {
         const res = await fetch('/api/cafes/search?q=')
-        if (!res.ok) throw new Error('Could not load cafes')
+        if (!res.ok) throw new Error()
         const data = await res.json()
-        if (!mounted) return
-        setResults(data.cafes ?? [])
-      } catch (error) {
-        console.error('Failed to load visit modal data:', error)
+        if (mounted) setResults(data.cafes ?? [])
+      } catch {
         if (mounted) setResults([])
       }
     }
-
-    loadInitialResults()
+    load()
     return () => { mounted = false }
   }, [])
 
@@ -99,28 +88,22 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
       try {
         setSearching(true)
         const res = await fetch(`/api/cafes/search?q=${encodeURIComponent(query)}`)
-        if (!res.ok) throw new Error('Could not search cafes')
+        if (!res.ok) throw new Error()
         const data = await res.json()
         setResults(data.cafes ?? [])
-      } catch (error) {
-        console.error('Cafe search failed:', error)
+      } catch {
         setResults([])
       } finally {
         setSearching(false)
       }
     }, 300)
 
-    return () => {
-      if (searchRef.current) clearTimeout(searchRef.current)
-    }
+    return () => { if (searchRef.current) clearTimeout(searchRef.current) }
   }, [query, selectedCafe])
 
   // ── Submit visit ───────────────────────────────────────────────────────────
   async function handleSubmit() {
-    if (!selectedCafe) {
-      toast.error('Please select a café.')
-      return
-    }
+    if (!selectedCafe) { toast.error('Please select a café.'); return }
 
     try {
       setSaving(true)
@@ -145,34 +128,37 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
       })
 
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not log visit.')
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Could not log visit.')
-      }
-
-      // If the café matched a brand and we have shelf brands to compare against,
-      // transition to the face-off carousel instead of closing immediately
-      const queue: ShelfBrand[] = Array.isArray(data.shelfBrands)
-        ? data.shelfBrands.filter((b: ShelfBrand) => b.brandId && b.brandName)
+      const shelfCafes: ShelfCafe[] = Array.isArray(data.shelfCafes)
+        ? data.shelfCafes.filter((c: ShelfCafe) => c.cafeId && c.displayName)
         : []
 
-      if (data.seededBrandId && data.categoryId && queue.length > 0) {
-        setSeededBrandId(data.seededBrandId)
-        setSeededBrandName(data.seededBrandName ?? selectedCafe.name)
+      if (data.cafeId && data.categoryId && shelfCafes.length > 0) {
+        // Start binary search — O(log n) comparisons
+        const bs = initBS(shelfCafes)
+        setSeededCafeId(data.cafeId)
+        setSeededDisplayName(data.cafeDisplayName ?? selectedCafe.name)
         setCategoryId(data.categoryId)
-        setFaceoffQueue(queue)
-        setFaceoffIndex(0)
-        setPhase('faceoff')
-        toast.success('Visit logged! Rank it against your shelf.')
-      } else {
-        // No shelf brands yet — first visit ever, or unmatched café
-        if (data.brandMatchStatus === 'matched') {
-          toast.success(`Visit to ${selectedCafe.name} logged.`)
-        } else if (data.brandMatchStatus === 'pending') {
-          toast.success('Visit logged. Brand match will be reviewed.')
+        setBsState(bs)
+
+        if (bs.done) {
+          // Only 0 items on shelf — already ranked #1, go straight to done
+          setFinalRank(1)
+          setPhase('done')
         } else {
-          toast.success("Visit logged. We'll map this café to a brand soon.")
+          setPhase('faceoff')
+          toast.success('Visit logged! Rank it on your shelf.')
         }
+      } else {
+        // Unmatched or first-ever visit — no face-off needed
+        toast.success(
+          data.brandMatchStatus === 'matched'
+            ? `Visit to ${selectedCafe.name} logged.`
+            : data.brandMatchStatus === 'pending'
+              ? 'Visit logged. Brand match will be reviewed.'
+              : "Visit logged. We'll map this café to a brand soon."
+        )
         onClose()
         router.refresh()
       }
@@ -183,53 +169,48 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  // ── Submit a face-off pick ─────────────────────────────────────────────────
-  async function handlePick(winnerId: string) {
-    if (!seededBrandId || !categoryId || faceoffLoading) return
+  // ── Handle a face-off pick ─────────────────────────────────────────────────
+  async function handlePick(newCafeWon: boolean) {
+    if (!seededCafeId || !categoryId || !bsState || faceoffLoading) return
 
-    const opponent = faceoffQueue[faceoffIndex]
+    const opponent = getCurrentOpponent(bsState)
+    if (!opponent) return
 
     try {
       setFaceoffLoading(true)
+
+      const winnerId = newCafeWon ? seededCafeId : opponent.cafeId
 
       const res = await fetch('/api/faceoff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           categoryId,
-          brandAId: seededBrandId,
-          brandBId: opponent.brandId,
-          winnerId,
+          cafeAId: seededCafeId,
+          cafeBId: opponent.cafeId,
+          winnerCafeId: winnerId,
         }),
       })
 
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not save face-off.')
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Could not save face-off.')
+      // Advance the binary search
+      const nextBS = advanceBS(bsState, newCafeWon)
+      setBsState(nextBS)
+
+      if (nextBS.done) {
+        // Binary search complete — insertion rank is determined
+        setFinalRank(nextBS.insertionRank)
+        setPhase('done')
+        router.refresh()
+      } else {
+        // More comparisons needed — next opponent is the new midpoint
       }
-
-      // Track the latest rank — after the last face-off this is what we show
-      if (typeof data.winnerRank === 'number' && data.winnerRank > 0) {
-        setFinalRank(data.winnerRank)
-      }
-
-      advance()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save face-off.')
     } finally {
       setFaceoffLoading(false)
-    }
-  }
-
-  // ── Advance to next face-off or transition to done ─────────────────────────
-  function advance() {
-    const next = faceoffIndex + 1
-    if (next >= faceoffQueue.length) {
-      setPhase('done')
-      router.refresh()
-    } else {
-      setFaceoffIndex(next)
     }
   }
 
@@ -238,16 +219,18 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
     router.refresh()
   }
 
+  const currentOpponent = bsState ? getCurrentOpponent(bsState) : null
   const showEmptyState = !searching && results.length === 0 && query.trim().length >= 2
-  const currentOpponent = faceoffQueue[faceoffIndex] ?? null
-  const totalFaceoffs = faceoffQueue.length
+
+  // Progress: how far through the binary search are we
+  const maxSteps = bsState?.maxSteps ?? 1
+  const currentStep = bsState?.step ?? 1
+  const progressPct = maxSteps > 0 ? ((currentStep - 1) / maxSteps) * 100 : 0
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="w-full max-w-2xl rounded-t-3xl bg-[#1c1b19] p-6 sm:rounded-3xl sm:p-8">
 
@@ -261,11 +244,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                   Pick the café. Chun will map the operator brand automatically.
                 </p>
               </div>
-              <button
-                onClick={onClose}
-                className="rounded-full p-2 hover:bg-white/10"
-                aria-label="Close"
-              >
+              <button onClick={onClose} className="rounded-full p-2 hover:bg-white/10" aria-label="Close">
                 <X size={18} className="text-muted" />
               </button>
             </div>
@@ -276,11 +255,10 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                   Search café
                 </label>
                 <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  {searching ? (
-                    <Loader2 size={16} className="shrink-0 animate-spin text-muted" />
-                  ) : (
-                    <Search size={16} className="shrink-0 text-muted" />
-                  )}
+                  {searching
+                    ? <Loader2 size={16} className="shrink-0 animate-spin text-muted" />
+                    : <Search size={16} className="shrink-0 text-muted" />
+                  }
                   <input
                     autoFocus
                     value={query}
@@ -295,10 +273,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                     {results.map((cafe, index) => (
                       <button
                         key={cafe.id ?? cafe.osm_place_id ?? `${cafe.name}-${index}`}
-                        onClick={() => {
-                          setSelectedCafe(cafe)
-                          setQuery(cafe.name)
-                        }}
+                        onClick={() => { setSelectedCafe(cafe); setQuery(cafe.name) }}
                         className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-white/10"
                         type="button"
                       >
@@ -316,7 +291,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
 
                 {showEmptyState && (
                   <p className="mt-3 text-center text-sm text-muted">
-                    No cafés found yet. Try a more specific name or area.
+                    No cafés found. Try a more specific name or area.
                   </p>
                 )}
               </div>
@@ -333,10 +308,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
                   <button
-                    onClick={() => {
-                      setSelectedCafe(null)
-                      setQuery('')
-                    }}
+                    onClick={() => { setSelectedCafe(null); setQuery('') }}
                     className="rounded-full p-1 hover:bg-white/10"
                     aria-label="Change café"
                     type="button"
@@ -347,11 +319,10 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
 
                 <div className="mt-3 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs text-muted">
                   <div className="flex items-center gap-2">
-                    {selectedCafe.brand_match_status === 'matched' ? (
-                      <CheckCircle2 size={14} className="text-emerald-400" />
-                    ) : (
-                      <AlertCircle size={14} className="text-amber-400" />
-                    )}
+                    {selectedCafe.brand_match_status === 'matched'
+                      ? <CheckCircle2 size={14} className="text-emerald-400" />
+                      : <AlertCircle size={14} className="text-amber-400" />
+                    }
                     <span>
                       {selectedCafe.brand_match_status === 'matched'
                         ? 'Operator brand already linked for this café.'
@@ -399,27 +370,23 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                 className="cta-primary flex-1 disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
               >
-                {saving ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <>
-                    <span>Log visit</span>
-                    <ChevronRight size={16} />
-                  </>
-                )}
+                {saving
+                  ? <Loader2 size={16} className="animate-spin" />
+                  : <><span>Log visit</span><ChevronRight size={16} /></>
+                }
               </button>
             </div>
           </>
         )}
 
         {/* ── PHASE: FACEOFF ───────────────────────────────────────────────── */}
-        {phase === 'faceoff' && currentOpponent && (
+        {phase === 'faceoff' && currentOpponent && bsState && (
           <>
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-white">Rank it on your shelf</h2>
                 <p className="mt-1 text-sm text-muted">
-                  {faceoffIndex + 1} of {totalFaceoffs} · Which do you prefer?
+                  {currentStep} of ~{maxSteps} · Which do you prefer?
                 </p>
               </div>
               <button
@@ -428,7 +395,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                 type="button"
               >
                 <SkipForward size={13} />
-                Skip all
+                Skip
               </button>
             </div>
 
@@ -436,14 +403,14 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
             <div className="mb-6 h-1 w-full overflow-hidden rounded-full bg-white/10">
               <div
                 className="h-full rounded-full bg-accent transition-all duration-300"
-                style={{ width: `${(faceoffIndex / totalFaceoffs) * 100}%` }}
+                style={{ width: `${progressPct}%` }}
               />
             </div>
 
             {/* Face-off cards */}
             <div className="mb-4 grid grid-cols-2 gap-3">
               <button
-                onClick={() => handlePick(seededBrandId!)}
+                onClick={() => handlePick(true)}
                 disabled={faceoffLoading}
                 className="relative flex min-h-[128px] flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center transition hover:border-accent/40 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
@@ -451,16 +418,14 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                 {faceoffLoading && (
                   <Loader2 size={14} className="absolute right-3 top-3 animate-spin text-muted" />
                 )}
-                <span className="text-xs uppercase tracking-widest text-accent">
-                  Just visited
-                </span>
+                <span className="text-xs uppercase tracking-widest text-accent">Just visited</span>
                 <span className="text-sm font-semibold text-white">
-                  {seededBrandName ?? 'New brand'}
+                  {seededDisplayName ?? 'New café'}
                 </span>
               </button>
 
               <button
-                onClick={() => handlePick(currentOpponent.brandId)}
+                onClick={() => handlePick(false)}
                 disabled={faceoffLoading}
                 className="relative flex min-h-[128px] flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center transition hover:border-white/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
@@ -468,11 +433,9 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                 {faceoffLoading && (
                   <Loader2 size={14} className="absolute right-3 top-3 animate-spin text-muted" />
                 )}
-                <span className="text-xs uppercase tracking-widest text-faint">
-                  On your shelf
-                </span>
+                <span className="text-xs uppercase tracking-widest text-faint">On your shelf</span>
                 <span className="text-sm font-semibold text-white">
-                  {currentOpponent.brandName}
+                  {currentOpponent.displayName}
                 </span>
               </button>
             </div>
@@ -488,11 +451,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
           <>
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Shelf updated</h2>
-              <button
-                onClick={onClose}
-                className="rounded-full p-2 hover:bg-white/10"
-                aria-label="Close"
-              >
+              <button onClick={onClose} className="rounded-full p-2 hover:bg-white/10" aria-label="Close">
                 <X size={18} className="text-muted" />
               </button>
             </div>
@@ -503,7 +462,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
               </div>
               <div>
                 <p className="text-base font-semibold text-white">
-                  {seededBrandName ?? 'New brand'} is ranked
+                  {seededDisplayName ?? 'New café'} is ranked
                 </p>
                 {finalRank ? (
                   <p className="mt-1 text-4xl font-bold text-accent">
@@ -511,19 +470,14 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
                     <span className="ml-2 text-base font-normal text-muted">on your shelf</span>
                   </p>
                 ) : (
-                  <p className="mt-1 text-sm text-muted">
-                    Your shelf rankings have been updated.
-                  </p>
+                  <p className="mt-1 text-sm text-muted">Your shelf rankings have been updated.</p>
                 )}
               </div>
             </div>
 
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  onClose()
-                  router.push('/shelf')
-                }}
+                onClick={() => { onClose(); router.push('/shelf') }}
                 className="cta-secondary flex-1"
                 type="button"
               >
