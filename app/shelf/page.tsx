@@ -54,38 +54,35 @@ export default async function ShelfPage() {
 
   if (!user) redirect('/login')
 
- // Replace the category fetch + shelf query block with this:
+  const { data: category } = await supabase
+    .from('categories')
+    .select('id, name')
+    .eq('slug', 'coffee')
+    .maybeSingle() as unknown as { data: { id: string; name: string } | null }
 
-    const { data: category } = await supabase
-      .from('categories')
-      .select('id, name')
-      .eq('slug', 'coffee')
-      .maybeSingle()
-    
-    const categoryId = category?.id ?? null
-    const categoryName = category?.name ?? 'Coffee'
-    
-    const { data: rawShelf } = categoryId
-      ? await supabase
-          .from('shelf_items')
-          .select(
-            'id, cafe_id, brand_id, display_name, rank, score, comparisons_count, cafes(name, city, address), brands(name, tagline, origin_city, price_range)'
-          )
-          .eq('user_id', user.id)
-          .eq('category_id', categoryId)
-          .order('rank', { ascending: true })
-      : { data: [] }
+  const categoryId = category?.id ?? null
+  const categoryName = category?.name ?? 'Coffee'
+
+  const { data: rawShelf } = categoryId
+    ? await supabase
+        .from('shelf_items')
+        .select(
+          'id, cafe_id, brand_id, display_name, rank, score, comparisons_count, cafes(name, city, address), brands(name, tagline, origin_city, price_range)'
+        )
+        .eq('user_id', user.id)
+        .eq('category_id', categoryId)
+        .order('rank', { ascending: true })
+    : { data: [] }
 
   const shelf = (rawShelf ?? []) as unknown as ShelfRow[]
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
+  // ── Stats ──────────────────────────────────────────────────────────────────
   const itemCount = shelf.length
   const avgScore =
     itemCount > 0
       ? Math.round(shelf.reduce((sum, s) => sum + s.score, 0) / itemCount)
       : 0
 
-  // Top movement: highest score item that isn't rank #1 (most improved feel)
   const topMover =
     shelf.length > 1
       ? [...shelf].sort((a, b) => b.score - a.score).find((s) => s.rank > 1)
@@ -133,7 +130,7 @@ export default async function ShelfPage() {
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-          {/* ── Stats sidebar ───────────────────────────────────────────── */}
+          {/* ── Stats sidebar ─────────────────────────────────────────────── */}
           <div className="card p-6">
             <p className="text-xs uppercase tracking-[0.18em] text-faint">
               Shelf stats · {categoryName}
@@ -177,7 +174,7 @@ export default async function ShelfPage() {
             )}
           </div>
 
-          {/* ── Shelf list ──────────────────────────────────────────────── */}
+          {/* ── Shelf list ────────────────────────────────────────────────── */}
           <div className="space-y-4">
             {shelf.length === 0 ? (
               <div className="card flex flex-col items-center gap-4 p-12 text-center">
