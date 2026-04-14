@@ -1,147 +1,130 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
-import { updateElo } from '@/lib/utils'
-import type { Database } from '@/lib/database.types'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/lib/database.types'
 
-type FaceoffPayload = {
-  categoryId: string
-  brandAId: string
-  brandBId: string
-  winnerId: string
+const K_FACTOR = 32
+const DEFAULT_ELO = 1200
+
+function expectedScore(ratingA: number, ratingB: number): number {
+  return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400))
 }
 
-const DEFAULT_SCORE = 1200
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const isUUID = (s: string) => UUID_RE.test(s)
+function newElo(rating: number, expected: number, actual: 0 | 1): number {
+  return Math.round(rating + K_FACTOR * (actual - expected))
+}
+
+type FaceoffBody = {
+  categoryId: string
+  cafeAId: string
+  cafeBId: string
+  winnerCafeId: string
+}
+
+type ShelfRow = {
+  id: string
+  cafe_id: string
+  brand_id: string | null
+  score: number
+  rank: number
+}
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as FaceoffPayload
-    let { categoryId, brandAId, brandBId, winnerId } = body
+    const body = (await request.json()) as FaceoffBody
+    const { categoryId, cafeAId, cafeBId, winnerCafeId } = body
 
-    if (!categoryId || !brandAId || !brandBId || !winnerId) {
-      return NextResponse.json({ error: 'Missing required face-off fields.' }, { status: 400 })
+    if (!categoryId || !cafeAId || !cafeBId || !winnerCafeId) {
+      return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 })
     }
 
-    if (brandAId === brandBId) {
-      return NextResponse.json({ error: 'A face-off requires two different brands.' }, { status: 400 })
+    if (winnerCafeId !== cafeAId && winnerCafeId !== cafeBId) {
+      return NextResponse.json({ error: 'winnerCafeId must be cafeAId or cafeBId.' }, { status: 400 })
     }
 
-    const supabase = await createSupabaseServerClient() as unknown as SupabaseClient<Database>
+    const supabase =
+      (await createSupabaseServerClient()) as unknown as SupabaseClient<Database>
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    if (!isUUID(categoryId)) {
-      const { data: category, error } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('slug', categoryId)
-        .single()
+    // ── Fetch both shelf items ────────────────────────────────────────────────
+    const { data: shelfRows, error: shelfError } = await supabase
+      .from('shelf_items')
+      .select('id, cafe_id, brand_id, score, rank')
+      .eq('user_id', user.id)
+      .eq('category_id', categoryId)
+      .in('cafe_id', [cafeAId, cafeBId])
 
-      if (error || !category) {
-        return NextResponse.json({ error: 'Invalid category.' }, { status: 400 })
-      }
-      categoryId = category.id
+    if (shelfError) {
+      return NextResponse.json({ error: shelfError.message }, { status: 500 })
     }
 
-    const slugsToResolve = [brandAId, brandBId].filter((id) => !isUUID(id))
+    const rows = (shelfRows ?? []) as ShelfRow[]
+    const rowA = rows.find((r) => r.cafe_id === cafeAId)
+    const rowB = rows.find((r) => r.cafe_id === cafeBId)
 
-    if (slugsToResolve.length > 0) {
-      const { data: brands, error } = await supabase
-        .from('brands')
-        .select('id, slug')
-        .in('slug', slugsToResolve)
-
-      if (error || !brands) {
-        return NextResponse.json({ error: 'Could not resolve brand IDs.' }, { status: 400 })
-      }
-
-      const slugToId = Object.fromEntries(brands.map((b) => [b.slug, b.id]))
-      const winnerWasA = winnerId === brandAId
-      brandAId = slugToId[brandAId] ?? brandAId
-      brandBId = slugToId[brandBId] ?? brandBId
-      winnerId = winnerWasA ? brandAId : brandBId
-    }
-
-    if (winnerId !== brandAId && winnerId !== brandBId) {
+    if (!rowA || !rowB) {
       return NextResponse.json(
-        { error: 'Winner must match one of the brands in the face-off.' },
-        { status: 400 }
+        { error: 'Could not find shelf items for both cafes.' },
+        { status: 404 }
       )
     }
 
-    const loserId = winnerId === brandAId ? brandBId : brandAId
+    // ── Elo calculation ───────────────────────────────────────────────────────
+    const scoreA = rowA.score ?? DEFAULT_ELO
+    const scoreB = rowB.score ?? DEFAULT_ELO
+    const expectedA = expectedScore(scoreA, scoreB)
+    const expectedB = 1 - expectedA
 
-    const { error: comparisonError } = await supabase
-      .from('comparisons')
-      .insert({
-        user_id: user.id,
-        category_id: categoryId,
-        brand_a_id: brandAId,
-        brand_b_id: brandBId,
-        winner_id: winnerId,
-      })
+    const aWon = winnerCafeId === cafeAId
+    const newScoreA = newElo(scoreA, expectedA, aWon ? 1 : 0)
+    const newScoreB = newElo(scoreB, expectedB, aWon ? 0 : 1)
 
-    if (comparisonError) {
-      return NextResponse.json({ error: comparisonError.message }, { status: 500 })
-    }
+    // ── Update Elo scores ─────────────────────────────────────────────────────
+    const [updateA, updateB] = await Promise.all([
+      supabase
+        .from('shelf_items')
+        .update({
+          score: newScoreA,
+          comparisons_count: (rowA as ShelfRow & { comparisons_count?: number }).comparisons_count ?? 0 + 1,
+        })
+        .eq('id', rowA.id),
+      supabase
+        .from('shelf_items')
+        .update({
+          score: newScoreB,
+          comparisons_count: (rowB as ShelfRow & { comparisons_count?: number }).comparisons_count ?? 0 + 1,
+        })
+        .eq('id', rowB.id),
+    ])
 
-    const { data: currentShelf, error: shelfFetchError } = await supabase
-      .from('shelf_items')
-      .select('brand_id, score')
-      .eq('user_id', user.id)
-      .eq('category_id', categoryId)
-      .in('brand_id', [brandAId, brandBId])
+    if (updateA.error) return NextResponse.json({ error: updateA.error.message }, { status: 500 })
+    if (updateB.error) return NextResponse.json({ error: updateB.error.message }, { status: 500 })
 
-    if (shelfFetchError) {
-      return NextResponse.json({ error: shelfFetchError.message }, { status: 500 })
-    }
+    // ── Log comparison ────────────────────────────────────────────────────────
+    await supabase.from('comparisons').insert({
+      user_id: user.id,
+      category_id: categoryId,
+      brand_a_id: rowA.brand_id ?? null,
+      brand_b_id: rowB.brand_id ?? null,
+      winner_id: aWon ? rowA.brand_id ?? null : rowB.brand_id ?? null,
+      cafe_a_id: cafeAId,
+      cafe_b_id: cafeBId,
+      winner_cafe_id: winnerCafeId,
+    })
 
-    const winnerCurrent = currentShelf?.find((item) => item.brand_id === winnerId)
-    const loserCurrent  = currentShelf?.find((item) => item.brand_id === loserId)
-
-    const winnerScore = winnerCurrent?.score ?? DEFAULT_SCORE
-    const loserScore  = loserCurrent?.score  ?? DEFAULT_SCORE
-
-    const nextScores = updateElo(winnerScore, loserScore)
-
-    const upserts = [
-      {
-        user_id: user.id,
-        brand_id: winnerId,
-        category_id: categoryId,
-        rank: 999,
-        score: nextScores.newWinner,
-        quick_review: null,
-        tried_at: new Date().toISOString(),
-      },
-      {
-        user_id: user.id,
-        brand_id: loserId,
-        category_id: categoryId,
-        rank: 999,
-        score: nextScores.newLoser,
-        quick_review: null,
-        tried_at: new Date().toISOString(),
-      },
-    ]
-
-    const { error: upsertError } = await supabase
-      .from('shelf_items')
-      .upsert(upserts, { onConflict: 'user_id,brand_id,category_id' })
-
-    if (upsertError) {
-      return NextResponse.json({ error: upsertError.message }, { status: 500 })
-    }
-
-    // CHANGED: added brand_id to select so we can compute winnerRank below
+    // ── Recalculate ranks for this user's category shelf ──────────────────────
+    // Fetch all shelf items for this category, sort by score DESC, assign ranks 1..n
     const { data: allShelf, error: allShelfError } = await supabase
       .from('shelf_items')
-      .select('id, brand_id, score')
+      .select('id, score')
       .eq('user_id', user.id)
       .eq('category_id', categoryId)
       .order('score', { ascending: false })
@@ -150,22 +133,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: allShelfError.message }, { status: 500 })
     }
 
-    const rankUpdates =
-      allShelf?.map((item, index) =>
-        supabase.from('shelf_items').update({ rank: index + 1 }).eq('id', item.id)
-      ) ?? []
+    const rankUpdates = (allShelf ?? []).map((row, index) => ({
+      id: row.id,
+      rank: index + 1,
+    }))
 
-    await Promise.all(rankUpdates)
-
-    // CHANGED: derive winner's rank from sorted shelf so client can show "#3 on your shelf"
-    const winnerRank = (allShelf?.findIndex((item) => item.brand_id === winnerId) ?? -1) + 1
-
-    return NextResponse.json({ success: true, winnerId, loserId, scores: nextScores, winnerRank })
-  } catch (error) {
-    console.error('Face-off API error:', error)
-    return NextResponse.json(
-      { error: 'Something went wrong while saving the face-off.' },
-      { status: 500 }
+    // Batch rank updates
+    await Promise.all(
+      rankUpdates.map(({ id, rank }) =>
+        supabase.from('shelf_items').update({ rank }).eq('id', id)
+      )
     )
+
+    // ── Return new rank of the winner ─────────────────────────────────────────
+    const winnerNewRank = rankUpdates.find(
+      (r) => r.id === (aWon ? rowA.id : rowB.id)
+    )?.rank ?? null
+
+    return NextResponse.json({
+      success: true,
+      winnerCafeId,
+      winnerRank: winnerNewRank,
+      newScores: {
+        [cafeAId]: newScoreA,
+        [cafeBId]: newScoreB,
+      },
+    })
+  } catch (error) {
+    console.error('POST /api/faceoff failed:', error)
+    return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 })
   }
 }
