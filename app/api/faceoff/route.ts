@@ -23,7 +23,7 @@ type FaceoffBody = {
 
 type ShelfRow = {
   id: string
-  cafe_id: string
+  cafe_id: string | null
   brand_id: string | null
   score: number
   rank: number
@@ -66,9 +66,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: shelfError.message }, { status: 500 })
     }
 
-    const rows = (shelfRows ?? []) as ShelfRow[]
-    const rowA = rows.find((r) => r.cafe_id === cafeAId)
-    const rowB = rows.find((r) => r.cafe_id === cafeBId)
+    const rows = shelfRows as ShelfRow[]
+    const rowA = rows.find((r) => r.cafe_id !== null && r.cafe_id === cafeAId)
+    const rowB = rows.find((r) => r.cafe_id !== null && r.cafe_id === cafeBId)
 
     if (!rowA || !rowB) {
       return NextResponse.json(
