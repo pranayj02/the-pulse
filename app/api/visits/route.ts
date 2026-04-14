@@ -297,12 +297,14 @@ export async function POST(request: Request) {
         .neq('cafe_id', resolvedCafeId)
         .order('rank', { ascending: true })
 
-      shelfCafes = (existingShelf ?? []).map((row) => ({
-        cafeId: row.cafe_id,
-        score: row.score ?? 1200,
-        rank: row.rank ?? 999,
-        displayName: row.display_name ?? 'Unknown café',
-      }))
+     shelfCafes = (existingShelf ?? [])
+        .filter((row): row is typeof row & { cafe_id: string } => Boolean(row.cafe_id))
+        .map((row) => ({
+          cafeId: row.cafe_id,
+          score: row.score ?? 1200,
+          rank: row.rank ?? 999,
+          displayName: row.display_name ?? 'Unknown café',
+        }))
     }
     // ── End shelf seed ────────────────────────────────────────────────────────
 
