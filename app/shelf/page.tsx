@@ -54,24 +54,27 @@ export default async function ShelfPage() {
 
   if (!user) redirect('/login')
 
-  // Fetch the coffee category id
-  const { data: category } = await supabase
-    .from('categories')
-    .select('id, name')
-    .eq('slug', 'coffee')
-    .maybeSingle()
+ // Replace the category fetch + shelf query block with this:
 
-  // Fetch real shelf items ordered by rank
-  const { data: rawShelf } = category
-    ? await supabase
-        .from('shelf_items')
-        .select(
-          'id, cafe_id, brand_id, display_name, rank, score, comparisons_count, cafes(name, city, address), brands(name, tagline, origin_city, price_range)'
-        )
-        .eq('user_id', user.id)
-        .eq('category_id', category.id)
-        .order('rank', { ascending: true })
-    : { data: [] }
+    const { data: category } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('slug', 'coffee')
+      .maybeSingle()
+    
+    const categoryId = category?.id ?? null
+    const categoryName = category?.name ?? 'Coffee'
+    
+    const { data: rawShelf } = categoryId
+      ? await supabase
+          .from('shelf_items')
+          .select(
+            'id, cafe_id, brand_id, display_name, rank, score, comparisons_count, cafes(name, city, address), brands(name, tagline, origin_city, price_range)'
+          )
+          .eq('user_id', user.id)
+          .eq('category_id', categoryId)
+          .order('rank', { ascending: true })
+      : { data: [] }
 
   const shelf = (rawShelf ?? []) as unknown as ShelfRow[]
 
@@ -94,8 +97,6 @@ export default async function ShelfPage() {
       topMover.brands?.name ??
       'Unknown'
     : null
-
-  const categoryName = category?.name ?? 'Coffee'
 
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
