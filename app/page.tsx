@@ -26,45 +26,9 @@ function formatTimestamp(value: string) {
   }).format(new Date(value))
 }
 
-type CardCopy = {
-  eyebrow: string
-  title: string
-  note: string | null
-  // Rendered as a ranked badge on visit cards — null for all other types
-  shelfRank: number | null
-  body: string | null
-}
-
-function cardCopy(item: FeedItem, isOwn: boolean): CardCopy {
-  const name = actorName(item)
-
-  if (item.type === 'visit') {
-    return {
-      eyebrow: 'Visit',
-      title: `${name} visited ${item.payload.cafeName ?? 'a café'}`,
-      note: item.payload.note ?? null,
-      shelfRank: item.payload.shelfRank ?? null,
-      body: null,
-    }
-  }
-
-  if (item.type === 'comparison') {
-    return {
-      eyebrow: 'Face-off',
-      title: `${name} picked ${item.payload.winnerName ?? 'a winner'}`,
-      note: null,
-      shelfRank: null,
-      body: `${item.payload.brandAName ?? 'Brand A'} vs ${item.payload.brandBName ?? 'Brand B'}`,
-    }
-  }
-
-  return {
-    eyebrow: 'Badge',
-    title: `${name} earned ${item.payload.badgeSlug ?? 'a badge'}`,
-    note: null,
-    shelfRank: null,
-    body: null,
-  }
+function formatVisitDate(value?: string | null) {
+  if (!value) return null
+  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' }).format(new Date(value))
 }
 
 export default async function HomePage({ searchParams }: PageProps) {
@@ -110,15 +74,14 @@ export default async function HomePage({ searchParams }: PageProps) {
           <div className="mt-4 flex gap-2 overflow-x-auto">
             {tabs.map((tab) => {
               const active = tab.key === scope
-
               return (
                 <Link
                   key={tab.key}
                   href={tab.key === 'for-you' ? '/' : `/?scope=${tab.key}`}
                   className={`rounded-full px-4 py-2 text-sm transition ${
                     active
-                      ? 'bg-accent text-black'
-                      : 'border border-white/10 bg-white/5 text-muted hover:bg-white/10 hover:text-white'
+                      ? 'bg-white text-slate-950 shadow-[var(--shadow-soft)]'
+                      : 'bg-white/5 text-muted hover:bg-white/10 hover:text-white'
                   }`}
                 >
                   {tab.label}
@@ -127,114 +90,104 @@ export default async function HomePage({ searchParams }: PageProps) {
             })}
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-faint">Following</p>
+          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-faint">Following</p>
               <p className="mt-2 text-lg font-semibold text-white">{feed.counts.following}</p>
             </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-faint">City cohort</p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-faint">City</p>
               <p className="mt-2 text-lg font-semibold text-white">{feed.counts.city}</p>
             </div>
-
-            <div className="hidden rounded-2xl border border-white/10 bg-black/10 p-3 sm:block">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-faint">Scope</p>
-              <p className="mt-2 text-lg font-semibold capitalize text-white">
-                {scope.replace('-', ' ')}
-              </p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 col-span-2">
+              <p className="text-xs uppercase tracking-[0.16em] text-faint">Feed logic</p>
+              <p className="mt-2 text-sm text-muted">Only friend visit activity appears here, with current rank on their shelf.</p>
             </div>
           </div>
         </section>
 
-        <section className="space-y-3">
+        <section className="space-y-4">
           {feed.items.length === 0 ? (
-            <div className="card p-6">
-              <h2 className="text-base font-semibold text-white">No activity yet</h2>
+            <div className="card p-5 md:p-6">
+              <h2 className="text-base font-semibold text-white">No visit activity yet</h2>
               <p className="mt-2 text-sm text-muted">
-                Start by following a few people, logging a café visit, or doing a face-off.
+                Start by following a few people or logging a café visit so the feed has real-world taste data to show.
               </p>
-
               <div className="mt-4 flex gap-2">
-                <Link href="/leaderboard" className="cta-secondary">
-                  Find people
+                <Link href="/discover" className="cta-secondary">
+                  Log a visit
                 </Link>
-                <Link href="/faceoff" className="cta-primary">
-                  Start ranking
+                <Link href="/profile" className="cta-primary">
+                  Find people
                 </Link>
               </div>
             </div>
           ) : (
             feed.items.map((item) => {
               const isOwn = item.actor.id === feed.currentUser.id
-              const profileHref = isOwn ? '/profile' : `/profile/${item.actor.id}`
-              const copy = cardCopy(item, isOwn)
+              const name = actorName(item)
+              const photos = item.payload.photoUrls ?? []
+              const visitDate = formatVisitDate(item.payload.visitedAt)
 
               return (
-                <article
-                  key={`${item.type}-${item.id}`}
-                  className="rounded-[28px] border border-white/10 bg-white/5 p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
+                <article key={item.id} className="card overflow-hidden p-5 md:p-6">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/10 text-sm font-semibold text-white">
+                      {item.actor.avatar_url ? (
+                        <img
+                          src={item.actor.avatar_url}
+                          alt={name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span>{name.slice(0, 1).toUpperCase()}</span>
+                      )}
+                    </div>
 
-                      {/* Eyebrow + You badge */}
-                      <div className="flex items-center gap-2">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-faint">
-                          {copy.eyebrow}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-white">
+                          {isOwn ? 'You' : name}
                         </p>
-                        {isOwn && (
-                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-faint">
-                            You
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-faint">
+                          Visit
+                        </span>
+                        {item.payload.shelfRank !== null && (
+                          <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                            Rank #{item.payload.shelfRank}
                           </span>
                         )}
                       </div>
 
-                      {/* Title */}
-                      <h3 className="mt-2 text-sm font-medium text-white">
-                        <Link href={profileHref} className="hover:text-accent">
-                          {copy.title}
-                        </Link>
-                      </h3>
+                      <p className="mt-2 text-base font-semibold text-white">
+                        {isOwn ? 'Visited' : `${name} visited`} {item.payload.cafeName ?? 'a café'}
+                      </p>
 
-                      {/* Visit note */}
-                      {copy.note && (
-                        <p className="mt-2 text-sm italic text-muted">
-                          &ldquo;{copy.note}&rdquo;
-                        </p>
-                      )}
-
-                      {/* Comparison body (Brand A vs Brand B) */}
-                      {copy.body && (
-                        <p className="mt-2 text-sm text-muted">{copy.body}</p>
-                      )}
-
-                      {/* Shelf rank badge — only on visit items with a resolved rank */}
-                      {item.type === 'visit' && copy.shelfRank !== null && (
-                        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-3 py-1">
-                          <span className="text-xs font-semibold text-accent">
-                            #{copy.shelfRank}
-                          </span>
-                          <span className="text-xs text-muted">
-                            {isOwn ? 'on your shelf' : 'on their shelf'}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Timestamp + city */}
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-faint">
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-faint">
                         <span>{formatTimestamp(item.ts)}</span>
-                        {item.actor.city && <span>· {item.actor.city}</span>}
+                        {visitDate && <span>Visited on {visitDate}</span>}
+                        {item.actor.city && <span>{item.actor.city}</span>}
                       </div>
-                    </div>
 
-                    <Link
-                      href={profileHref}
-                      className="shrink-0 rounded-full border border-white/10 px-3 py-1.5 text-xs text-muted hover:bg-white/10 hover:text-white"
-                    >
-                      View
-                    </Link>
+                      {item.payload.note && (
+                        <p className="mt-3 text-sm leading-6 text-muted">{item.payload.note}</p>
+                      )}
+                    </div>
                   </div>
+
+                  {photos.length > 0 && (
+                    <div className={`mt-4 grid gap-2 ${photos.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                      {photos.map((url, index) => (
+                        <div key={`${item.id}-${index}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                          <img
+                            src={url}
+                            alt={`${item.payload.cafeName ?? 'Visit'} photo ${index + 1}`}
+                            className="h-48 w-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </article>
               )
             })
