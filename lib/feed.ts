@@ -19,202 +19,157 @@ export type FeedItem = {
   actor: Actor
   payload: {
     cafeName?: string | null
+    cafeId?: string | null
     note?: string | null
     visitedAt?: string | null
     shelfRank?: number | null
     photoUrls?: string[]
+    likeCount: number
+    commentCount: number
+    isLiked: boolean
+    isSaved: boolean
   }
+}
+
+export type FeedComment = {
+  id: string
+  user_id: string
+  username: string | null
+  full_name: string | null
+  avatar_url: string | null
+  body: string
+  created_at: string
 }
 
 export type FeedResult = {
   scope: FeedScope
   currentUser: Actor
-  counts: {
-    following: number
-    city: number
-  }
+  counts: { following: number; city: number }
   items: FeedItem[]
 }
 
-type QueryError = { message: string }
-type QueryResult<T> = { data: T; error: QueryError | null }
+type QR<T> = { data: T; error: { message: string } | null }
 
-type FollowingRow = { following_id: string }
-type CityRow = { id: string }
-
-type VisitRow = {
-  id: string
-  user_id: string
-  note: string | null
-  visited_at: string
-  created_at: string
-  cafes:
-    | { name: string | null; primary_brand_id: string | null }
-    | { name: string | null; primary_brand_id: string | null }[]
-    | null
-}
-
-type ShelfRankRow = {
-  user_id: string
-  brand_id: string
-  rank: number
-}
-
-type VisitPhotoRow = {
-  visit_id?: string | null
-  storage_path?: string | null
-  public_url?: string | null
-  photo_url?: string | null
-  url?: string | null
-  image_url?: string | null
-  created_at?: string | null
-}
-
-function unique(values: string[]) {
-  return Array.from(new Set(values.filter(Boolean)))
-}
-
+function unique(vals: string[]) { return Array.from(new Set(vals.filter(Boolean))) }
 function fallbackActor(id: string): Actor {
-  return {
-    id,
-    username: null,
-    full_name: null,
-    avatar_url: null,
-    city: null,
-    level: 'Sip',
-    xp: 0,
-  }
-}
-
-function firstCafe(row: VisitRow) {
-  return row.cafes && !Array.isArray(row.cafes) ? row.cafes : null
+  return { id, username: null, full_name: null, avatar_url: null, city: null, level: 'Sip', xp: 0 }
 }
 
 export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult | null> {
   const supabase = await createSupabaseServerClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const currentProfileRes = (await supabase
-    .from('profiles')
+  const meRes = (await supabase.from('profiles')
     .select('id, username, full_name, avatar_url, city, level, xp')
-    .eq('id', user.id)
-    .single()) as unknown as QueryResult<Actor | null>
+    .eq('id', user.id).single()) as unknown as QR<Actor | null>
+  if (meRes.error || !meRes.data) throw new Error(meRes.error?.message ?? 'No profile')
+  const currentUser = meRes.data
 
-  if (currentProfileRes.error || !currentProfileRes.data) {
-    throw new Error(currentProfileRes.error?.message ?? 'Could not load profile')
-  }
-
-  const currentUser = currentProfileRes.data
-
-  const followingRes = (await supabase
-    .from('follows')
-    .select('following_id')
-    .eq('follower_id', user.id)) as unknown as QueryResult<FollowingRow[] | null>
-
-  if (followingRes.error) throw new Error(followingRes.error.message)
-
-  const followingIds = unique((followingRes.data ?? []).map((row) => row.following_id))
+  const followRes = (await supabase.from('follows').select('following_id')
+    .eq('follower_id', user.id)) as unknown as QR<{ following_id: string }[] | null>
+  if (followRes.error) throw new Error(followRes.error.message)
+  const followingIds = unique((followRes.data ?? []).map((r) => r.following_id))
 
   let cityIds: string[] = []
   if (currentUser.city) {
-    const cityRes = (await supabase
-      .from('profiles')
-      .select('id')
-      .eq('city', currentUser.city)
-      .limit(50)) as unknown as QueryResult<CityRow[] | null>
-
-    if (cityRes.error) throw new Error(cityRes.error.message)
-    cityIds = unique((cityRes.data ?? []).map((row) => row.id))
+    const cr = (await supabase.from('profiles').select('id').eq('city', currentUser.city)
+      .limit(50)) as unknown as QR<{ id: string }[] | null>
+    if (cr.error) throw new Error(cr.error.message)
+    cityIds = unique((cr.data ?? []).map((r) => r.id))
   }
 
-  const actorIds =
-    scope === 'following'
-      ? followingIds
-      : scope === 'city'
-        ? cityIds
-        : unique([...followingIds, ...cityIds, user.id])
+  const actorIds = scope === 'following' ? followingIds
+    : scope === 'city' ? cityIds
+    : unique([...followingIds, ...cityIds, user.id])
+  const scopedIds = actorIds.length > 0 ? actorIds : [user.id]
 
-  const scopedActorIds = actorIds.length > 0 ? actorIds : [user.id]
+  type VisitRow = {
+    id: string; user_id: string; note: string | null
+    visited_at: string; created_at: string
+    cafes: { id: string; name: string | null; primary_brand_id: string | null }
+      | { id: string; name: string | null; primary_brand_id: string | null }[] | null
+  }
 
   const [visitsRaw, actorsRaw] = await Promise.all([
-    supabase
-      .from('cafe_visits')
-      .select('id, user_id, note, visited_at, created_at, cafes(name, primary_brand_id)')
-      .in('user_id', scopedActorIds)
-      .order('created_at', { ascending: false })
-      .limit(60),
-    supabase
-      .from('profiles')
-      .select('id, username, full_name, avatar_url, city, level, xp')
-      .in('id', unique([...scopedActorIds, user.id])),
+    supabase.from('cafe_visits')
+      .select('id, user_id, note, visited_at, created_at, cafes(id, name, primary_brand_id)')
+      .in('user_id', scopedIds).order('created_at', { ascending: false }).limit(60),
+    supabase.from('profiles').select('id, username, full_name, avatar_url, city, level, xp')
+      .in('id', unique([...scopedIds, user.id])),
   ])
-
-  const visitsRes = visitsRaw as unknown as QueryResult<VisitRow[] | null>
-  const actorsRes = actorsRaw as unknown as QueryResult<Actor[] | null>
-
+  const visitsRes = visitsRaw as unknown as QR<VisitRow[] | null>
+  const actorsRes = actorsRaw as unknown as QR<Actor[] | null>
   if (visitsRes.error) throw new Error(visitsRes.error.message)
   if (actorsRes.error) throw new Error(actorsRes.error.message)
 
   const actorMap = new Map<string, Actor>()
-  for (const actor of actorsRes.data ?? []) actorMap.set(actor.id, actor)
+  for (const a of actorsRes.data ?? []) actorMap.set(a.id, a)
   actorMap.set(currentUser.id, currentUser)
 
   const visits = visitsRes.data ?? []
+  const visitIds = visits.map((r) => r.id)
 
+  function firstCafe(row: VisitRow) {
+    return row.cafes && !Array.isArray(row.cafes) ? row.cafes : null
+  }
+
+  // Shelf ranks
   const shelfPairs = visits
-    .map((row) => {
-      const cafe = firstCafe(row)
-      const brandId = cafe?.primary_brand_id
-      return brandId ? { user_id: row.user_id, brand_id: brandId } : null
-    })
-    .filter((value): value is { user_id: string; brand_id: string } => Boolean(value))
-
-  const shelfUserIds = unique(shelfPairs.map((row) => row.user_id))
-  const shelfBrandIds = unique(shelfPairs.map((row) => row.brand_id))
-
+    .map((r) => { const c = firstCafe(r); return c?.primary_brand_id ? { uid: r.user_id, bid: c.primary_brand_id } : null })
+    .filter((v): v is { uid: string; bid: string } => Boolean(v))
   const shelfRankMap = new Map<string, number>()
-  if (shelfUserIds.length > 0 && shelfBrandIds.length > 0) {
-    const shelfRaw = await supabase
-      .from('shelf_items')
-      .select('user_id, brand_id, rank')
-      .in('user_id', shelfUserIds)
-      .in('brand_id', shelfBrandIds)
+  if (shelfPairs.length > 0) {
+    const sr = await supabase.from('shelf_items').select('user_id, brand_id, rank')
+      .in('user_id', unique(shelfPairs.map((p) => p.uid)))
+      .in('brand_id', unique(shelfPairs.map((p) => p.bid)))
+    const srRes = sr as unknown as QR<{ user_id: string; brand_id: string; rank: number }[] | null>
+    if (!srRes.error) for (const row of srRes.data ?? []) shelfRankMap.set(`${row.user_id}:${row.brand_id}`, row.rank)
+  }
 
-    const shelfRes = shelfRaw as unknown as QueryResult<ShelfRankRow[] | null>
-    if (shelfRes.error) throw new Error(shelfRes.error.message)
-
-    for (const row of shelfRes.data ?? []) {
-      shelfRankMap.set(`${row.user_id}:${row.brand_id}`, row.rank)
+  // Photos
+  const photoMap = new Map<string, string[]>()
+  if (visitIds.length > 0) {
+    const pr = await supabase.from('visit_photos').select('*').in('visit_id', visitIds)
+    const prRes = pr as unknown as QR<Record<string, string | null>[] | null>
+    if (!prRes.error) {
+      for (const row of prRes.data ?? []) {
+        const vid = row['visit_id'] ?? null
+        if (!vid) continue
+        let url = row['public_url'] ?? row['photo_url'] ?? row['url'] ?? row['image_url'] ?? null
+        if (!url && row['storage_path']) url = supabase.storage.from('visit-photos').getPublicUrl(row['storage_path']).data.publicUrl || null
+        if (!url) continue
+        const ex = photoMap.get(vid) ?? []; ex.push(url); photoMap.set(vid, ex)
+      }
     }
   }
 
-  const photoMap = new Map<string, string[]>()
-  const visitIds = visits.map((row) => row.id)
+  // Social counts (graceful — all zeros if tables don't exist yet)
+  const likeCountMap = new Map<string, number>()
+  const likedByMe = new Set<string>()
+  const commentCountMap = new Map<string, number>()
+  const savedCafeIds = new Set<string>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any
+
   if (visitIds.length > 0) {
-    const photosRaw = await supabase.from('visit_photos').select('*').in('visit_id', visitIds)
-    const photosRes = photosRaw as unknown as QueryResult<VisitPhotoRow[] | null>
+    try {
+      const [allLikes, myLikes, allComments] = await Promise.all([
+        db.from('activity_likes').select('visit_id').in('visit_id', visitIds),
+        db.from('activity_likes').select('visit_id').in('visit_id', visitIds).eq('user_id', user.id),
+        db.from('activity_comments').select('visit_id').in('visit_id', visitIds),
+      ])
+      if (!allLikes.error) for (const r of allLikes.data ?? []) likeCountMap.set(r.visit_id, (likeCountMap.get(r.visit_id) ?? 0) + 1)
+      if (!myLikes.error) for (const r of myLikes.data ?? []) likedByMe.add(r.visit_id)
+      if (!allComments.error) for (const r of allComments.data ?? []) commentCountMap.set(r.visit_id, (commentCountMap.get(r.visit_id) ?? 0) + 1)
+    } catch { /* pre-migration — continue */ }
 
-    if (!photosRes.error) {
-      for (const row of photosRes.data ?? []) {
-        const visitId = row.visit_id ?? null
-        if (!visitId) continue
-
-        let url = row.public_url ?? row.photo_url ?? row.url ?? row.image_url ?? null
-        if (!url && row.storage_path) {
-          const publicUrl = supabase.storage.from('visit-photos').getPublicUrl(row.storage_path).data.publicUrl
-          url = publicUrl || null
-        }
-        if (!url) continue
-
-        const existing = photoMap.get(visitId) ?? []
-        existing.push(url)
-        photoMap.set(visitId, existing)
-      }
+    const cafeIds = unique(visits.map((r) => firstCafe(r)?.id ?? '').filter(Boolean))
+    if (cafeIds.length > 0) {
+      try {
+        const sv = await db.from('saved_cafes').select('cafe_id').eq('user_id', user.id).in('cafe_id', cafeIds)
+        if (!sv.error) for (const r of sv.data ?? []) savedCafeIds.add(r.cafe_id)
+      } catch { /* pre-migration */ }
     }
   }
 
@@ -222,29 +177,24 @@ export async function getFeed(scope: FeedScope = 'for-you'): Promise<FeedResult 
     const cafe = firstCafe(row)
     const brandId = cafe?.primary_brand_id ?? null
     const shelfRank = brandId ? shelfRankMap.get(`${row.user_id}:${brandId}`) ?? null : null
-
     return {
-      id: row.id,
-      type: 'visit',
-      ts: row.created_at,
+      id: row.id, type: 'visit' as const, ts: row.created_at,
       actor: actorMap.get(row.user_id) ?? fallbackActor(row.user_id),
       payload: {
-        cafeName: cafe?.name ?? null,
-        note: row.note,
-        visitedAt: row.visited_at,
-        shelfRank,
+        cafeName: cafe?.name ?? null, cafeId: cafe?.id ?? null,
+        note: row.note, visitedAt: row.visited_at, shelfRank,
         photoUrls: (photoMap.get(row.id) ?? []).slice(0, 4),
+        likeCount: likeCountMap.get(row.id) ?? 0,
+        commentCount: commentCountMap.get(row.id) ?? 0,
+        isLiked: likedByMe.has(row.id),
+        isSaved: savedCafeIds.has(cafe?.id ?? ''),
       },
     }
   })
 
   return {
-    scope,
-    currentUser,
-    counts: {
-      following: followingIds.length,
-      city: Math.max(0, cityIds.filter((id) => id !== user.id).length),
-    },
+    scope, currentUser,
+    counts: { following: followingIds.length, city: Math.max(0, cityIds.filter((id) => id !== user.id).length) },
     items,
   }
 }
