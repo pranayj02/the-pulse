@@ -16,9 +16,14 @@ function newElo(rating: number, expected: number, actual: 0 | 1): number {
 
 type FaceoffBody = {
   categoryId: string
-  cafeAId: string
-  cafeBId: string
-  winnerCafeId: string
+  // brand-centric (what the faceoff page sends)
+  brandAId?: string
+  brandBId?: string
+  winnerId?: string
+  // cafe-centric (legacy / alternative)
+  cafeAId?: string
+  cafeBId?: string
+  winnerCafeId?: string
 }
 
 type ShelfRow = {
@@ -27,19 +32,28 @@ type ShelfRow = {
   brand_id: string | null
   score: number
   rank: number
+  comparisons_count?: number
 }
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as FaceoffBody
-    const { categoryId, cafeAId, cafeBId, winnerCafeId } = body
 
-    if (!categoryId || !cafeAId || !cafeBId || !winnerCafeId) {
+    // Normalise: accept either brand-centric or cafe-centric field names
+    const categoryId = body.categoryId
+    const idA = body.brandAId ?? body.cafeAId
+    const idB = body.brandBId ?? body.cafeBId
+    const winnerId = body.winnerId ?? body.winnerCafeId
+
+    if (!categoryId || !idA || !idB || !winnerId) {
       return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 })
     }
 
-    if (winnerCafeId !== cafeAId && winnerCafeId !== cafeBId) {
-      return NextResponse.json({ error: 'winnerCafeId must be cafeAId or cafeBId.' }, { status: 400 })
+    if (winnerId !== idA && winnerId !== idB) {
+      return NextResponse.json(
+        { error: 'winnerId must be one of the two competing IDs.' },
+        { status: 400 }
+      )
     }
 
     const supabase =
@@ -54,53 +68,69 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // ── Fetch both shelf items ────────────────────────────────────────────────
-    const { data: shelfRows, error: shelfError } = await supabase
+    // ── Fetch both shelf items (try brand_id first, fall back to cafe_id) ────
+    let rows: ShelfRow[] = []
+    let usedField: 'brand_id' | 'cafe_id' = 'brand_id'
+
+    const { data: byBrand, error: brandErr } = await supabase
       .from('shelf_items')
-      .select('id, cafe_id, brand_id, score, rank')
+      .select('id, cafe_id, brand_id, score, rank, comparisons_count')
       .eq('user_id', user.id)
       .eq('category_id', categoryId)
-      .in('cafe_id', [cafeAId, cafeBId])
+      .in('brand_id', [idA, idB])
 
-    if (shelfError) {
-      return NextResponse.json({ error: shelfError.message }, { status: 500 })
+    if (!brandErr && byBrand && byBrand.length === 2) {
+      rows = byBrand as ShelfRow[]
+      usedField = 'brand_id'
+    } else {
+      // Fall back to cafe_id lookup (legacy)
+      const { data: byCafe, error: cafeErr } = await supabase
+        .from('shelf_items')
+        .select('id, cafe_id, brand_id, score, rank, comparisons_count')
+        .eq('user_id', user.id)
+        .eq('category_id', categoryId)
+        .in('cafe_id', [idA, idB])
+
+      if (cafeErr) {
+        return NextResponse.json({ error: cafeErr.message }, { status: 500 })
+      }
+      rows = (byCafe ?? []) as ShelfRow[]
+      usedField = 'cafe_id'
     }
 
-    const rows = shelfRows as ShelfRow[]
-    const rowA = rows.find((r) => r.cafe_id !== null && r.cafe_id === cafeAId)
-    const rowB = rows.find((r) => r.cafe_id !== null && r.cafe_id === cafeBId)
+    const rowA = rows.find((r) => r[usedField] === idA)
+    const rowB = rows.find((r) => r[usedField] === idB)
 
     if (!rowA || !rowB) {
       return NextResponse.json(
-        { error: 'Could not find shelf items for both cafes.' },
+        { error: 'Both items must be on your shelf before a face-off.' },
         { status: 404 }
       )
     }
 
-    // ── Elo calculation ───────────────────────────────────────────────────────
+    // ── ELO ──────────────────────────────────────────────────────────────────
     const scoreA = rowA.score ?? DEFAULT_ELO
     const scoreB = rowB.score ?? DEFAULT_ELO
     const expectedA = expectedScore(scoreA, scoreB)
     const expectedB = 1 - expectedA
-
-    const aWon = winnerCafeId === cafeAId
+    const aWon = winnerId === idA
     const newScoreA = newElo(scoreA, expectedA, aWon ? 1 : 0)
     const newScoreB = newElo(scoreB, expectedB, aWon ? 0 : 1)
 
-    // ── Update Elo scores ─────────────────────────────────────────────────────
+    // ── Update scores ─────────────────────────────────────────────────────────
     const [updateA, updateB] = await Promise.all([
       supabase
         .from('shelf_items')
         .update({
           score: newScoreA,
-          comparisons_count: (rowA as ShelfRow & { comparisons_count?: number }).comparisons_count ?? 0 + 1,
+          comparisons_count: (rowA.comparisons_count ?? 0) + 1,
         })
         .eq('id', rowA.id),
       supabase
         .from('shelf_items')
         .update({
           score: newScoreB,
-          comparisons_count: (rowB as ShelfRow & { comparisons_count?: number }).comparisons_count ?? 0 + 1,
+          comparisons_count: (rowB.comparisons_count ?? 0) + 1,
         })
         .eq('id', rowB.id),
     ])
@@ -115,13 +145,12 @@ export async function POST(request: Request) {
       brand_a_id: rowA.brand_id ?? null,
       brand_b_id: rowB.brand_id ?? null,
       winner_id: aWon ? rowA.brand_id ?? null : rowB.brand_id ?? null,
-      cafe_a_id: cafeAId,
-      cafe_b_id: cafeBId,
-      winner_cafe_id: winnerCafeId,
+      cafe_a_id: rowA.cafe_id ?? null,
+      cafe_b_id: rowB.cafe_id ?? null,
+      winner_cafe_id: aWon ? rowA.cafe_id ?? null : rowB.cafe_id ?? null,
     })
 
-    // ── Recalculate ranks for this user's category shelf ──────────────────────
-    // Fetch all shelf items for this category, sort by score DESC, assign ranks 1..n
+    // ── Recalculate ranks ─────────────────────────────────────────────────────
     const { data: allShelf, error: allShelfError } = await supabase
       .from('shelf_items')
       .select('id, score')
@@ -138,25 +167,22 @@ export async function POST(request: Request) {
       rank: index + 1,
     }))
 
-    // Batch rank updates
     await Promise.all(
       rankUpdates.map(({ id, rank }) =>
         supabase.from('shelf_items').update({ rank }).eq('id', id)
       )
     )
 
-    // ── Return new rank of the winner ─────────────────────────────────────────
-    const winnerNewRank = rankUpdates.find(
-      (r) => r.id === (aWon ? rowA.id : rowB.id)
-    )?.rank ?? null
+    const winnerNewRank =
+      rankUpdates.find((r) => r.id === (aWon ? rowA.id : rowB.id))?.rank ?? null
 
     return NextResponse.json({
       success: true,
-      winnerCafeId,
+      winnerId,
       winnerRank: winnerNewRank,
       newScores: {
-        [cafeAId]: newScoreA,
-        [cafeBId]: newScoreB,
+        [idA]: newScoreA,
+        [idB]: newScoreB,
       },
     })
   } catch (error) {
