@@ -202,11 +202,10 @@ export default function DiscoverPage() {
         ? { cafeId: cafe.id, visitedAt: new Date().toISOString() }
         : {
             cafe: {
-              id: cafe.id,
               osm_place_id: cafe.osm_place_id,
               name: cafe.name,
               city: cafe.city,
-              address: cafe.address,
+              address: cafe.address ?? cafe.city ?? cafe.name,
               lat: cafe.lat,
               lng: cafe.lng,
             },
@@ -245,7 +244,7 @@ export default function DiscoverPage() {
       if (opponents.length > 0 && newCafeId && categoryId) {
         toast.success(`Visit logged! Battling ${cafe.name} now…`)
         router.push(
-          `/faceoff?a=${newCafeId}&b=${opponents[0].cafeId}&cat=${categoryId}`
+          `/faceoff?a=${newCafeId}&aName=${encodeURIComponent(cafe.name)}&b=${opponents[0].cafeId}&bName=${encodeURIComponent(opponents[0].displayName)}&cat=${categoryId}`
         )
       } else if (newCafeId) {
         toast.success(
