@@ -1,16 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import dynamic from 'next/dynamic'
-import { MapPin, Navigation, Search, X, Zap } from 'lucide-react'
+import { Search, MapPin, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Header } from '@/components/Header'
-import { createClient } from '@/lib/supabase'
-
-const Map = dynamic(() => import('@/components/Map'), { ssr: false })
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { LogVisitModal } from '@/components/LogVisitModal'
 
 type CafeResult = {
   id: string | null
@@ -20,395 +15,179 @@ type CafeResult = {
   address: string | null
   lat: number | null
   lng: number | null
-  source: 'db' | 'nominatim'
-}
-
-type MapPlace = {
-  id: string
-  name: string
-  lat: number
-  lng: number
-  city?: string | null
-  address?: string | null
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function shortAddr(city: string | null | undefined, address: string | null | undefined) {
-  const neighbourhood = address?.split(',')[0]?.trim() ?? null
-  return [city, neighbourhood].filter(Boolean).join(' · ') || null
+  source?: 'db' | 'nominatim'
 }
 
 function Monogram({ name }: { name: string }) {
-  const letters = name
-    .trim()
-    .split(/\s+/)
+  const initials = name
+    .split(' ')
+    .filter(Boolean)
     .slice(0, 2)
-    .map((w) => w[0])
+    .map((w) => w[0].toUpperCase())
     .join('')
-    .toUpperCase()
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-bold text-white">
-      {letters || '?'}
+    <div
+      aria-hidden="true"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-sm font-semibold text-white"
+    >
+      {initials}
     </div>
   )
 }
 
-function ResultSkeleton() {
-  return (
-    <div className="space-y-3 p-4">
-      {[0, 1, 2].map((n) => (
-        <div key={n} className="flex items-center gap-3">
-          <div className="h-10 w-10 shrink-0 animate-pulse rounded-xl bg-white/8" />
-          <div className="flex-1 space-y-2">
-            <div className="h-3 w-40 animate-pulse rounded bg-white/8" />
-            <div className="h-2.5 w-28 animate-pulse rounded bg-white/8" />
-          </div>
-          <div className="h-8 w-24 shrink-0 animate-pulse rounded-xl bg-white/8" />
-        </div>
-      ))}
-    </div>
-  )
+function shortAddr(city: string | null, address: string | null) {
+  if (address && city && !address.toLowerCase().includes(city.toLowerCase())) {
+    return `${address}, ${city}`
+  }
+  return address ?? city ?? ''
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DiscoverPage() {
   const router = useRouter()
-  const supabase = useMemo(() => createClient(), [])
-
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<CafeResult[]>([])
   const [searching, setSearching] = useState(false)
-  const [mapPlaces, setMapPlaces] = useState<MapPlace[]>([])
-  const [city, setCity] = useState('your city')
-  const [loggingKey, setLoggingKey] = useState<string | null>(null)
-
+  const [selectedCafe, setSelectedCafe] = useState<CafeResult | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // ── Load map cafés + default results ────────────────────────────────────────
+  // Load initial cafes
   useEffect(() => {
     let mounted = true
-    async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      let userCity: string | null = null
-      if (user) {
-        const pr = await supabase
-          .from('profiles')
-          .select('city')
-          .eq('id', user.id)
-          .maybeSingle()
-        userCity =
-          (pr.data as { city: string | null } | null)?.city ?? null
-      }
-      if (userCity && mounted) setCity(userCity)
-
-      let q = supabase
-        .from('cafes')
-        .select('id, name, lat, lng, city, address')
-        .order('name')
-        .limit(100)
-      if (userCity) q = q.eq('city', userCity)
-      const { data } = await q
-      if (!mounted) return
-
-      const places = (
-        (data ?? []) as {
-          id: string
-          name: string
-          lat: number | null
-          lng: number | null
-          city: string | null
-          address: string | null
-        }[]
-      )
-        .filter(
-          (c): c is typeof c & { lat: number; lng: number } =>
-            typeof c.lat === 'number' && typeof c.lng === 'number'
-        )
-        .map((c) => ({
-          id: c.id,
-          name: c.name,
-          lat: c.lat,
-          lng: c.lng,
-          city: c.city,
-          address: c.address,
-        }))
-
-      setMapPlaces(places)
-
-      // Default list = first 8 DB cafés when no search query yet
-      setResults((prev) =>
-        prev.length > 0
-          ? prev
-          : places.slice(0, 8).map((p) => ({
-              id: p.id,
-              osm_place_id: null,
-              name: p.name,
-              city: p.city ?? null,
-              address: p.address ?? null,
-              lat: p.lat,
-              lng: p.lng,
-              source: 'db' as const,
-            }))
-      )
-    }
-    init()
-    return () => {
-      mounted = false
-    }
-  }, [supabase])
-
-  // ── Debounced search ─────────────────────────────────────────────────────────
-  const runSearch = useCallback(async (q: string) => {
-    setSearching(true)
-    try {
-      const res = await fetch(
-        `/api/cafes/search?q=${encodeURIComponent(q)}`
-      )
-      if (!res.ok) return
-      const data = (await res.json()) as { cafes: CafeResult[] }
-      setResults(data.cafes ?? [])
-    } catch {
-      // silent
-    } finally {
-      setSearching(false)
-    }
+    fetch('/api/cafes/search?q=')
+      .then((r) => r.json())
+      .then((d) => { if (mounted) setResults(d.cafes ?? []) })
+      .catch(() => {})
+    return () => { mounted = false }
   }, [])
 
+  // Debounced search
   useEffect(() => {
+    if (selectedCafe) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!query.trim()) {
-      runSearch('')
-      return
-    }
-    debounceRef.current = setTimeout(() => runSearch(query), 280)
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [query, runSearch])
-
-  // ── Log visit + instant battle ───────────────────────────────────────────────
-  const handleLogAndBattle = async (cafe: CafeResult) => {
-    const key = cafe.osm_place_id ?? cafe.id ?? cafe.name
-    if (loggingKey) return
-    setLoggingKey(key)
-
-    try {
-      const body = cafe.id
-        ? { cafeId: cafe.id, visitedAt: new Date().toISOString() }
-        : {
-            cafe: {
-              osm_place_id: cafe.osm_place_id,
-              name: cafe.name,
-              city: cafe.city,
-              address: cafe.address ?? cafe.city ?? cafe.name,
-              lat: cafe.lat,
-              lng: cafe.lng,
-            },
-            visitedAt: new Date().toISOString(),
-          }
-
-      const res = await fetch('/api/visits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = (await res.json()) as {
-        success?: boolean
-        error?: string
-        cafeId?: string
-        categoryId?: string
-        shelfCafes?: {
-          cafeId: string
-          displayName: string
-          score: number
-          rank: number
-        }[]
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const res = await fetch(`/api/cafes/search?q=${encodeURIComponent(query)}`)
+        const d = await res.json()
+        setResults(d.cafes ?? [])
+      } catch {
+        setResults([])
+      } finally {
+        setSearching(false)
       }
+    }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [query, selectedCafe])
 
-      if (!res.ok || !data.success) {
-        toast.error(data.error ?? 'Could not log visit.')
-        return
-      }
+  const handleSelect = useCallback((cafe: CafeResult) => {
+    setSelectedCafe(cafe)
+  }, [])
 
-      const newCafeId = data.cafeId
-      const categoryId = data.categoryId
-      const opponents = (data.shelfCafes ?? []).filter(
-        (s) => s.cafeId !== newCafeId
-      )
-
-      if (opponents.length > 0 && newCafeId && categoryId) {
-        toast.success(`Visit logged! Battling ${cafe.name} now…`)
-        router.push(
-          `/faceoff?a=${newCafeId}&aName=${encodeURIComponent(cafe.name)}&b=${opponents[0].cafeId}&bName=${encodeURIComponent(opponents[0].displayName)}&cat=${categoryId}`
-        )
-      } else if (newCafeId) {
-        toast.success(
-          `${cafe.name} added to your shelf! Log one more café to start battling.`
-        )
-      } else {
-        toast.success('Visit logged!')
-      }
-    } catch {
-      toast.error('Something went wrong. Please try again.')
-    } finally {
-      setLoggingKey(null)
-    }
-  }
-
-  const clearSearch = () => {
+  const handleModalClose = useCallback(() => {
+    setSelectedCafe(null)
     setQuery('')
-    inputRef.current?.focus()
-  }
+    // Reload initial list
+    fetch('/api/cafes/search?q=')
+      .then((r) => r.json())
+      .then((d) => setResults(d.cafes ?? []))
+      .catch(() => {})
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }, [])
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
+  const showEmpty = !searching && results.length === 0 && query.trim().length >= 2
 
   return (
-    <main id="main-content" className="page-shell bottom-nav-space">
-      <Header active="discover" />
+    <>
+      <Header />
+      <div className="min-h-screen bg-[var(--color-bg)] px-4 pb-24 pt-6">
+        <div className="mx-auto max-w-lg">
 
-      <div className="container max-w-3xl space-y-6">
-        {/* ── Search card ─────────────────────────────────────────────────── */}
-        <section className="card-strong p-5 md:p-7">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-faint">
-            Discover · Coffee
-          </p>
-          <h1 className="section-title mt-1 text-white">
-            Find a café, battle it live
-          </h1>
-          <p className="mt-1 text-sm leading-6 text-muted">
-            Search any café — it's logged, added to your shelf, and immediately
-            face-off against your current&nbsp;#1.
-          </p>
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="font-display text-2xl font-semibold text-white">Discover</h1>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              Search a café, log your visit, rank it on your shelf.
+            </p>
+          </div>
 
           {/* Search input */}
-          <div className="relative mt-5">
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faint"
-            />
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search cafés in ${city}…`}
-              className="w-full rounded-2xl border border-white/10 bg-white/5 py-3.5 pl-10 pr-10 text-sm text-white placeholder:text-faint transition focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/8"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-faint transition hover:text-white"
-                aria-label="Clear search"
-              >
-                <X size={14} />
-              </button>
-            )}
+          <div className="relative mb-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3.5 focus-within:border-[var(--color-accent)]/40 focus-within:ring-2 focus-within:ring-[var(--color-accent)]/10 transition">
+              {searching
+                ? <Loader2 size={16} className="shrink-0 animate-spin text-[var(--color-text-muted)]" />
+                : <Search size={16} className="shrink-0 text-[var(--color-text-muted)]" />
+              }
+              <input
+                ref={inputRef}
+                autoFocus
+                value={query}
+                onChange={(e) => { setSelectedCafe(null); setQuery(e.target.value) }}
+                placeholder="Search cafés by name or area…"
+                className="w-full bg-transparent text-sm text-white outline-none placeholder:text-[var(--color-text-faint)]"
+              />
+              {query.length > 0 && (
+                <button
+                  onClick={() => { setQuery(''); setSelectedCafe(null) }}
+                  className="shrink-0 rounded-full p-0.5 hover:bg-white/10 transition"
+                  aria-label="Clear search"
+                >
+                  <X size={14} className="text-[var(--color-text-muted)]" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Results list */}
-          <div className="mt-3 overflow-hidden rounded-2xl border border-white/8">
-            {searching ? (
-              <ResultSkeleton />
-            ) : results.length === 0 ? (
-              <div className="px-4 py-8 text-center">
-                <p className="text-sm text-muted">
-                  {query
-                    ? `No results for "${query}". Try a different name or city.`
-                    : `No cafés loaded yet for ${city}.`}
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-white/5">
-                {results.map((cafe, i) => {
-                  const key = cafe.osm_place_id ?? cafe.id ?? `r-${i}`
-                  const isLogging = loggingKey === key
-                  const addr = shortAddr(cafe.city, cafe.address)
-                  return (
-                    <div
-                      key={key}
-                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-white/[0.025]"
-                    >
-                      <Monogram name={cafe.name} />
-
-                      <div className="min-w-0 flex-1 overflow-hidden">
-                        <p className="truncate text-sm font-medium text-white">
-                          {cafe.name}
+          {/* Results */}
+          {showEmpty ? (
+            <div className="py-12 text-center text-sm text-[var(--color-text-faint)]">
+              No cafés found for &quot;{query}&quot;
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-white/8 bg-[var(--color-surface)]">
+              {results.length === 0 && !searching && (
+                <div className="px-4 py-8 text-center text-sm text-[var(--color-text-faint)]">
+                  Start typing to search cafés…
+                </div>
+              )}
+              {results.map((cafe, i) => {
+                const key = cafe.osm_place_id ?? cafe.id ?? `r-${i}`
+                const addr = shortAddr(cafe.city, cafe.address)
+                return (
+                  <button
+                    key={key}
+                    onClick={() => handleSelect(cafe)}
+                    className="flex w-full items-center gap-3 border-b border-white/5 px-4 py-3.5 text-left transition last:border-0 hover:bg-white/[0.04] active:bg-white/[0.07]"
+                  >
+                    <Monogram name={cafe.name} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-white">{cafe.name}</p>
+                      {addr && (
+                        <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-[var(--color-text-faint)]">
+                          <MapPin size={10} className="shrink-0" />
+                          {addr}
                         </p>
-                        <div className="mt-0.5 flex items-center gap-2">
-                          {addr && (
-                            <span className="flex items-center gap-1 truncate text-xs text-faint">
-                              <MapPin size={10} />
-                              {addr}
-                            </span>
-                          )}
-                          {cafe.source === 'nominatim' && (
-                            <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-faint">
-                              New
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleLogAndBattle(cafe)}
-                        disabled={!!loggingKey}
-                        aria-label={`Log visit and battle ${cafe.name}`}
-                        className={[
-                          'flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition active:scale-95',
-                          isLogging
-                            ? 'cursor-wait bg-white/10 text-faint'
-                            : 'bg-[var(--color-accent)] text-black hover:brightness-110 disabled:opacity-50',
-                        ].join(' ')}
-                      >
-                        {isLogging ? (
-                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        ) : (
-                          <Zap size={11} />
-                        )}
-                        <span>{isLogging ? 'Logging…' : 'Log + Battle'}</span>
-                      </button>
+                      )}
                     </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ── Map card ────────────────────────────────────────────────────── */}
-        <section className="card p-5 md:p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-faint">
-                City map
-              </p>
-              <h2 className="mt-1 text-base font-semibold text-white">
-                {city} cafés
-              </h2>
+                    <span className="shrink-0 text-xs text-[var(--color-accent)] font-medium">
+                      Log →
+                    </span>
+                  </button>
+                )
+              })}
             </div>
-            <Navigation size={16} className="text-accent" />
-          </div>
+          )}
 
-          <div className="relative h-[360px] overflow-hidden rounded-2xl">
-            <Map places={mapPlaces} />
-            <div className="absolute bottom-3 left-3 rounded-xl border border-white/10 bg-[#11141a]/90 px-3 py-2.5 backdrop-blur-sm">
-              <p className="text-xs font-medium text-white">
-                {mapPlaces.length} cafés mapped
-              </p>
-              <p className="text-[10px] text-muted">
-                From {city} · grows with every visit
-              </p>
-            </div>
-          </div>
-        </section>
+        </div>
       </div>
-    </main>
+
+      {/* Modal: triggered when a cafe is selected */}
+      {selectedCafe && (
+        <LogVisitModal
+          prefillCafe={selectedCafe}
+          onClose={handleModalClose}
+        />
+      )}
+    </>
   )
 }
