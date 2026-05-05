@@ -145,7 +145,7 @@ export function LogVisitModal({ onClose, prefillCafe }: Props) {
       const shelfCafes: ShelfCafe[] = Array.isArray(data.shelfCafes)
         ? (data.shelfCafes as ShelfCafe[])
             .filter((c) => c.cafeId && c.displayName)
-            .slice(0, 7)
+            
         : []
 
       if (data.cafeId && data.categoryId && shelfCafes.length > 0) {
@@ -210,6 +210,7 @@ export function LogVisitModal({ onClose, prefillCafe }: Props) {
   }
 
   function handleDone() {
+    onClose()
     router.push('/')
   }
 
