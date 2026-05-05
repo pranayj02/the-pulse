@@ -1,17 +1,27 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { Compass, MapPin, Navigation, Sparkles } from 'lucide-react'
+import { MapPin, Navigation, Search, X, Zap } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { Header } from '@/components/Header'
-import { BrandCard } from '@/components/BrandCard'
-import { LogVisitModal } from '@/components/LogVisitModal'
 import { createClient } from '@/lib/supabase'
-import type { Brand } from '@/lib/types'
 
 const Map = dynamic(() => import('@/components/Map'), { ssr: false })
 
-const activeCategory = { name: 'Coffee' }
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type CafeResult = {
+  id: string | null
+  osm_place_id: string | null
+  name: string
+  city: string | null
+  address: string | null
+  lat: number | null
+  lng: number | null
+  source: 'db' | 'nominatim'
+}
 
 type MapPlace = {
   id: string
@@ -22,323 +32,384 @@ type MapPlace = {
   address?: string | null
 }
 
-// Takes the first segment of a potentially long address string so that OSM
-// full display_names like "Chapel Road, Ranwar Village Square, H/W Ward..."
-// render as just "Chapel Road" in the list.
-function shortAddress(city: string | null | undefined, address: string | null | undefined): string {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function shortAddr(city: string | null | undefined, address: string | null | undefined) {
   const neighbourhood = address?.split(',')[0]?.trim() ?? null
-  return [city, neighbourhood].filter(Boolean).join(' · ')
+  return [city, neighbourhood].filter(Boolean).join(' · ') || null
 }
 
+function Monogram({ name }: { name: string }) {
+  const letters = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-bold text-white">
+      {letters || '?'}
+    </div>
+  )
+}
+
+function ResultSkeleton() {
+  return (
+    <div className="space-y-3 p-4">
+      {[0, 1, 2].map((n) => (
+        <div key={n} className="flex items-center gap-3">
+          <div className="h-10 w-10 shrink-0 animate-pulse rounded-xl bg-white/8" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-40 animate-pulse rounded bg-white/8" />
+            <div className="h-2.5 w-28 animate-pulse rounded bg-white/8" />
+          </div>
+          <div className="h-8 w-24 shrink-0 animate-pulse rounded-xl bg-white/8" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function DiscoverPage() {
+  const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const [showVisitModal, setShowVisitModal] = useState(false)
 
-  const [city, setCity] = useState('Your city')
-  const [places, setPlaces] = useState<MapPlace[]>([])
-  const [discoverBrands, setDiscoverBrands] = useState<Brand[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<CafeResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [mapPlaces, setMapPlaces] = useState<MapPlace[]>([])
+  const [city, setCity] = useState('your city')
+  const [loggingKey, setLoggingKey] = useState<string | null>(null)
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // ── Load map cafés + default results ────────────────────────────────────────
   useEffect(() => {
     let mounted = true
+    async function init() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      let userCity: string | null = null
+      if (user) {
+        const pr = await supabase
+          .from('profiles')
+          .select('city')
+          .eq('id', user.id)
+          .maybeSingle()
+        userCity =
+          (pr.data as { city: string | null } | null)?.city ?? null
+      }
+      if (userCity && mounted) setCity(userCity)
 
-    async function loadDiscover() {
-      try {
-        setLoading(true)
-        setLoadError(null)
+      let q = supabase
+        .from('cafes')
+        .select('id, name, lat, lng, city, address')
+        .order('name')
+        .limit(100)
+      if (userCity) q = q.eq('city', userCity)
+      const { data } = await q
+      if (!mounted) return
 
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser()
-
-        if (authError) throw authError
-
-        let userCity: string | null = null
-
-        if (user?.id) {
-          const profileRes = await supabase
-            .from('profiles')
-            .select('city')
-            .eq('id', user.id)
-            .maybeSingle()
-
-          if (profileRes.error) throw profileRes.error
-
-          const profileData = profileRes.data as { city: string | null } | null
-          userCity = profileData ? profileData.city : null
-        }
-
-        let cafesQuery = supabase
-          .from('cafes')
-          .select('id, name, lat, lng, city, address')
-          .order('name', { ascending: true })
-          .limit(100)
-
-        if (userCity) {
-          cafesQuery = cafesQuery.eq('city', userCity)
-        }
-
-        const [cafesRes, brandsRes] = await Promise.all([
-          cafesQuery,
-          supabase
-            .from('brands')
-            .select('*')
-            .eq('is_active', true)
-            .order('name', { ascending: true })
-            .limit(4),
-        ])
-
-        if (cafesRes.error) throw cafesRes.error
-        if (brandsRes.error) throw brandsRes.error
-        if (!mounted) return
-
-        type CafeRow = {
+      const places = (
+        (data ?? []) as {
           id: string
           name: string
           lat: number | null
           lng: number | null
           city: string | null
           address: string | null
-        }
+        }[]
+      )
+        .filter(
+          (c): c is typeof c & { lat: number; lng: number } =>
+            typeof c.lat === 'number' && typeof c.lng === 'number'
+        )
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          lat: c.lat,
+          lng: c.lng,
+          city: c.city,
+          address: c.address,
+        }))
 
-        const cafeRows = (cafesRes.data ?? []) as CafeRow[]
+      setMapPlaces(places)
 
-        const mappedPlaces: MapPlace[] = cafeRows
-          .filter(
-            (cafe): cafe is CafeRow & { lat: number; lng: number } =>
-              typeof cafe.lat === 'number' &&
-              Number.isFinite(cafe.lat) &&
-              typeof cafe.lng === 'number' &&
-              Number.isFinite(cafe.lng)
-          )
-          .map((cafe) => ({
-            id: cafe.id,
-            name: cafe.name,
-            lat: cafe.lat,
-            lng: cafe.lng,
-            city: cafe.city ?? null,
-            address: cafe.address ?? null,
-          }))
-
-        setPlaces(mappedPlaces)
-        setCity(userCity || mappedPlaces[0]?.city || 'Your city')
-        setDiscoverBrands((brandsRes.data ?? []) as Brand[])
-      } catch (error) {
-        console.error('Failed to load discover page data:', error)
-        if (mounted) {
-          setLoadError('Could not load live discovery data right now.')
-          setPlaces([])
-          setDiscoverBrands([])
-        }
-      } finally {
-        if (mounted) setLoading(false)
-      }
+      // Default list = first 8 DB cafés when no search query yet
+      setResults((prev) =>
+        prev.length > 0
+          ? prev
+          : places.slice(0, 8).map((p) => ({
+              id: p.id,
+              osm_place_id: null,
+              name: p.name,
+              city: p.city ?? null,
+              address: p.address ?? null,
+              lat: p.lat,
+              lng: p.lng,
+              source: 'db' as const,
+            }))
+      )
     }
-
-    loadDiscover()
-
+    init()
     return () => {
       mounted = false
     }
   }, [supabase])
 
-  const nearbyPlaces = places.slice(0, 8)
+  // ── Debounced search ─────────────────────────────────────────────────────────
+  const runSearch = useCallback(async (q: string) => {
+    setSearching(true)
+    try {
+      const res = await fetch(
+        `/api/cafes/search?q=${encodeURIComponent(q)}`
+      )
+      if (!res.ok) return
+      const data = (await res.json()) as { cafes: CafeResult[] }
+      setResults(data.cafes ?? [])
+    } catch {
+      // silent
+    } finally {
+      setSearching(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!query.trim()) {
+      runSearch('')
+      return
+    }
+    debounceRef.current = setTimeout(() => runSearch(query), 280)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [query, runSearch])
+
+  // ── Log visit + instant battle ───────────────────────────────────────────────
+  const handleLogAndBattle = async (cafe: CafeResult) => {
+    const key = cafe.osm_place_id ?? cafe.id ?? cafe.name
+    if (loggingKey) return
+    setLoggingKey(key)
+
+    try {
+      const body = cafe.id
+        ? { cafeId: cafe.id, visitedAt: new Date().toISOString() }
+        : {
+            cafe: {
+              id: cafe.id,
+              osm_place_id: cafe.osm_place_id,
+              name: cafe.name,
+              city: cafe.city,
+              address: cafe.address,
+              lat: cafe.lat,
+              lng: cafe.lng,
+            },
+            visitedAt: new Date().toISOString(),
+          }
+
+      const res = await fetch('/api/visits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = (await res.json()) as {
+        success?: boolean
+        error?: string
+        cafeId?: string
+        categoryId?: string
+        shelfCafes?: {
+          cafeId: string
+          displayName: string
+          score: number
+          rank: number
+        }[]
+      }
+
+      if (!res.ok || !data.success) {
+        toast.error(data.error ?? 'Could not log visit.')
+        return
+      }
+
+      const newCafeId = data.cafeId
+      const categoryId = data.categoryId
+      const opponents = (data.shelfCafes ?? []).filter(
+        (s) => s.cafeId !== newCafeId
+      )
+
+      if (opponents.length > 0 && newCafeId && categoryId) {
+        toast.success(`Visit logged! Battling ${cafe.name} now…`)
+        router.push(
+          `/faceoff?a=${newCafeId}&b=${opponents[0].cafeId}&cat=${categoryId}`
+        )
+      } else if (newCafeId) {
+        toast.success(
+          `${cafe.name} added to your shelf! Log one more café to start battling.`
+        )
+      } else {
+        toast.success('Visit logged!')
+      }
+    } catch {
+      toast.error('Something went wrong. Please try again.')
+    } finally {
+      setLoggingKey(null)
+    }
+  }
+
+  const clearSearch = () => {
+    setQuery('')
+    inputRef.current?.focus()
+  }
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
       <Header active="discover" />
 
-      <div className="container space-y-6">
-        {loadError && (
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-            {loadError}
+      <div className="container max-w-3xl space-y-6">
+        {/* ── Search card ─────────────────────────────────────────────────── */}
+        <section className="card-strong p-5 md:p-7">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-faint">
+            Discover · Coffee
+          </p>
+          <h1 className="section-title mt-1 text-white">
+            Find a café, battle it live
+          </h1>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Search any café — it's logged, added to your shelf, and immediately
+            face-off against your current&nbsp;#1.
+          </p>
+
+          {/* Search input */}
+          <div className="relative mt-5">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faint"
+            />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search cafés in ${city}…`}
+              className="w-full rounded-2xl border border-white/10 bg-white/5 py-3.5 pl-10 pr-10 text-sm text-white placeholder:text-faint transition focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/8"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-faint transition hover:text-white"
+                aria-label="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
-        )}
 
-        <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-          <div className="card-strong p-6 md:p-8">
-            <div className="pill mb-4">
-              <Compass size={14} />
-              <span>Discovery · {activeCategory.name}</span>
-            </div>
-
-            <h1 className="section-title text-white">
-              Find what your {activeCategory.name.toLowerCase()} shelf suggests next
-            </h1>
-
-            <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
-              Discovery becomes more useful once your city graph is live. Use the
-              map to find cafés, log visits, and push more real-world taste data
-              back into Chun.
-            </p>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm text-muted">City coverage</p>
-                <p className="mt-2 text-lg font-semibold text-white">
-                  {loading ? 'Loading…' : `${places.length} cafés in ${city}`}
+          {/* Results list */}
+          <div className="mt-3 overflow-hidden rounded-2xl border border-white/8">
+            {searching ? (
+              <ResultSkeleton />
+            ) : results.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-sm text-muted">
+                  {query
+                    ? `No results for "${query}". Try a different name or city.`
+                    : `No cafés loaded yet for ${city}.`}
                 </p>
               </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm text-muted">Map status</p>
-                <p className="mt-2 text-lg font-semibold text-white">
-                  {loading
-                    ? 'Syncing live data'
-                    : places.length > 0
-                      ? 'Live from database'
-                      : 'No cafés loaded yet'}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <p className="mb-3 text-xs uppercase tracking-[0.18em] text-faint">
-                Nearby cafés
-              </p>
-
-              <div className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10">
-                {loading ? (
-                  <div className="px-4 py-6 text-sm text-muted">
-                    Loading cafés...
-                  </div>
-                ) : nearbyPlaces.length > 0 ? (
-                  nearbyPlaces.map((place) => (
+            ) : (
+              <div className="divide-y divide-white/5">
+                {results.map((cafe, i) => {
+                  const key = cafe.osm_place_id ?? cafe.id ?? `r-${i}`
+                  const isLogging = loggingKey === key
+                  const addr = shortAddr(cafe.city, cafe.address)
+                  return (
                     <div
-                      key={place.id}
-                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-white/5"
+                      key={key}
+                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-white/[0.025]"
                     >
-                      <MapPin size={14} className="shrink-0 text-accent" />
+                      <Monogram name={cafe.name} />
 
-                      {/* min-w-0 + overflow-hidden on this wrapper is what
-                          allows truncate to work on the children */}
                       <div className="min-w-0 flex-1 overflow-hidden">
                         <p className="truncate text-sm font-medium text-white">
-                          {place.name}
+                          {cafe.name}
                         </p>
-                        <p className="truncate text-xs text-muted">
-                          {shortAddress(place.city, place.address)}
-                        </p>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          {addr && (
+                            <span className="flex items-center gap-1 truncate text-xs text-faint">
+                              <MapPin size={10} />
+                              {addr}
+                            </span>
+                          )}
+                          {cafe.source === 'nominatim' && (
+                            <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-faint">
+                              New
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <button
                         type="button"
-                        onClick={() => setShowVisitModal(true)}
-                        className="pill shrink-0 text-xs transition hover:border-accent/40 hover:text-white"
+                        onClick={() => handleLogAndBattle(cafe)}
+                        disabled={!!loggingKey}
+                        aria-label={`Log visit and battle ${cafe.name}`}
+                        className={[
+                          'flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition active:scale-95',
+                          isLogging
+                            ? 'cursor-wait bg-white/10 text-faint'
+                            : 'bg-[var(--color-accent)] text-black hover:brightness-110 disabled:opacity-50',
+                        ].join(' ')}
                       >
-                        Log visit
+                        {isLogging ? (
+                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        ) : (
+                          <Zap size={11} />
+                        )}
+                        <span>{isLogging ? 'Logging…' : 'Log + Battle'}</span>
                       </button>
                     </div>
-                  ))
-                ) : (
-                  <div className="px-4 py-6 text-sm text-muted">
-                    No cafés found for this city yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="card p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-faint">
-                  City map
-                </p>
-                <h2 className="heading-md mt-2 text-white">
-                  {city} discovery layer
-                </h2>
-              </div>
-              <Navigation className="text-accent" size={18} />
-            </div>
-
-            <div className="relative h-[400px] w-full overflow-hidden rounded-2xl">
-              <Map places={places} />
-
-              <div className="absolute bottom-4 left-4 rounded-2xl border border-white/10 bg-[#11141a]/90 p-4 backdrop-blur">
-                <p className="text-sm font-semibold text-white">Live map layer</p>
-                <p className="mt-1 max-w-xs text-sm leading-6 text-muted">
-                  {loading
-                    ? 'Loading city cafés...'
-                    : places.length > 0
-                      ? `Showing ${places.length} cafés currently available in ${city}.`
-                      : 'No cafés available on the map yet.'}
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowVisitModal(true)}
-              className="cta-primary mt-4 w-full"
-            >
-              <MapPin size={16} />
-              <span>Log a visit</span>
-            </button>
-          </div>
-        </section>
-
-        <section className="card p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-faint">
-                Recommended for you
-              </p>
-              <h2 className="heading-md mt-2 text-white">
-                Coffee brands to explore
-              </h2>
-            </div>
-            <Sparkles size={18} className="text-accent" />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {discoverBrands.length > 0 ? (
-              discoverBrands.map((brand) => (
-                <BrandCard key={brand.id} brand={brand} compact />
-              ))
-            ) : (
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 md:col-span-2">
-                <p className="text-sm text-muted">
-                  {loading
-                    ? 'Loading brand suggestions...'
-                    : 'No active brands available right now.'}
-                </p>
+                  )
+                })}
               </div>
             )}
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          {[
-            {
-              label: 'Cafés on map',
-              value: loading ? '—' : String(places.length),
-            },
-            {
-              label: 'Brands in rotation',
-              value: loading ? '—' : String(discoverBrands.length),
-            },
-            {
-              label: 'City scope',
-              value: loading ? '—' : city,
-            },
-          ].map((item) => (
-            <div key={item.label} className="card p-5">
-              <div className="mb-3 flex items-center gap-2">
-                <MapPin size={16} className="text-accent" />
-                <p className="text-sm text-muted">{item.label}</p>
-              </div>
-              <p className="text-lg font-semibold text-white">{item.value}</p>
+        {/* ── Map card ────────────────────────────────────────────────────── */}
+        <section className="card p-5 md:p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-faint">
+                City map
+              </p>
+              <h2 className="mt-1 text-base font-semibold text-white">
+                {city} cafés
+              </h2>
             </div>
-          ))}
+            <Navigation size={16} className="text-accent" />
+          </div>
+
+          <div className="relative h-[360px] overflow-hidden rounded-2xl">
+            <Map places={mapPlaces} />
+            <div className="absolute bottom-3 left-3 rounded-xl border border-white/10 bg-[#11141a]/90 px-3 py-2.5 backdrop-blur-sm">
+              <p className="text-xs font-medium text-white">
+                {mapPlaces.length} cafés mapped
+              </p>
+              <p className="text-[10px] text-muted">
+                From {city} · grows with every visit
+              </p>
+            </div>
+          </div>
         </section>
       </div>
-
-      {showVisitModal && (
-        <LogVisitModal onClose={() => setShowVisitModal(false)} />
-      )}
     </main>
   )
 }
