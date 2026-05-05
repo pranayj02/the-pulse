@@ -166,7 +166,10 @@ export async function POST(request: Request) {
       const lat = cafe?.lat
       const lng = cafe?.lng
 
-      if (!name || !city || !address || !isFiniteNumber(lat) || !isFiniteNumber(lng)) {
+      // address can be missing from some Nominatim results — fall back to city
+      const safeAddress = address ?? city ?? name ?? ''
+
+      if (!name || !city || !isFiniteNumber(lat) || !isFiniteNumber(lng)) {
         return NextResponse.json(
           { error: 'Selected café is missing required location details. Please choose a result from search.' },
           { status: 400 }
@@ -180,7 +183,7 @@ export async function POST(request: Request) {
         .insert({
           name,
           city,
-          address,
+          address: safeAddress,
           lat,
           lng,
           osm_place_id: normalizeText(cafe?.osm_place_id),
