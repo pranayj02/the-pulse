@@ -298,7 +298,7 @@ export async function POST(request: Request) {
         .eq('user_id', user.id)
         .eq('category_id', faceoffCategoryId)
         .neq('cafe_id', resolvedCafeId)
-        .order('rank', { ascending: true })
+        .order('score', { ascending: false })
 
      shelfCafes = (existingShelf ?? [])
         .filter((row): row is typeof row & { cafe_id: string } => Boolean(row.cafe_id))
