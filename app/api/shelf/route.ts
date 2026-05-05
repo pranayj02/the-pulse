@@ -33,7 +33,8 @@ export async function GET(request: Request) {
     if (authError || !user)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Resolve category slug → UUID (use maybeSingle + explicit null-check)
+    // Resolve category slug → UUID
+    // Cast through unknown so TS doesn't infer `never` from the DB schema union
     const catRes = await supabase
       .from('categories')
       .select('id')
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
       )
     }
 
-    const categoryId: string = catRes.data.id
+    const categoryId = (catRes.data as unknown as { id: string }).id
 
     const raw = await supabase
       .from('shelf_items')
