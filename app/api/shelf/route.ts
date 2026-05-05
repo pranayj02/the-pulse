@@ -19,10 +19,14 @@ type RawRow = {
     | null
 }
 
+function isUUID(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const categorySlug = searchParams.get('category') ?? 'coffee'
+    const categoryParam = searchParams.get('category') ?? 'coffee'
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '30', 10), 50)
 
     const supabase = await createSupabaseServerClient()
@@ -33,22 +37,22 @@ export async function GET(request: Request) {
     if (authError || !user)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Resolve category slug → UUID
-    // Cast through unknown so TS doesn't infer `never` from the DB schema union
-    const catRes = await supabase
-      .from('categories')
-      .select('id')
-      .eq('slug', categorySlug)
-      .maybeSingle()
+    // Accept both UUID and slug for category param
+    const catQuery = isUUID(categoryParam)
+      ? supabase.from('categories').select('id, slug').eq('id', categoryParam).maybeSingle()
+      : supabase.from('categories').select('id, slug').eq('slug', categoryParam).maybeSingle()
+
+    const catRes = await catQuery
 
     if (catRes.error || !catRes.data) {
       return NextResponse.json(
-        { error: `Unknown category: ${categorySlug}` },
+        { error: `Unknown category: ${categoryParam}` },
         { status: 400 }
       )
     }
 
-    const categoryId = (catRes.data as unknown as { id: string }).id
+    const categoryId = (catRes.data as unknown as { id: string; slug: string }).id
+    const categorySlug = (catRes.data as unknown as { id: string; slug: string }).slug
 
     const raw = await supabase
       .from('shelf_items')
@@ -81,8 +85,7 @@ export async function GET(request: Request) {
         score: row.score ?? 1200,
         rank: row.rank ?? 999,
         comparisons_count: row.comparisons_count ?? 0,
-        logoUrl:
-          (brand as { logo_url?: string | null } | null)?.logo_url ?? null,
+        logoUrl: (brand as { logo_url?: string | null } | null)?.logo_url ?? null,
       }
     })
 
