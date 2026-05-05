@@ -220,8 +220,10 @@ function EmptyShelf() {
 
 function FaceoffPageInner() {
   const searchParams = useSearchParams()
-  const instantA = searchParams.get('a')   // cafeId or brandId
-  const instantB = searchParams.get('b')   // cafeId or brandId
+  const instantA = searchParams.get('a')     // cafeId or brandId
+  const instantB = searchParams.get('b')     // cafeId or brandId
+  const instantAName = searchParams.get('aName') // display name fallback (avoids race)
+  const instantBName = searchParams.get('bName') // display name fallback (avoids race)
   const catParam = searchParams.get('cat') ?? 'coffee'
 
   const [shelf, setShelf] = useState<ShelfItem[]>([])
@@ -256,7 +258,8 @@ function FaceoffPageInner() {
         setCategoryId(data.categoryId ?? null)
         setShelf(items)
 
-        // Resolve instant battle items by cafeId or brandId
+        // Resolve instant battle items — fall back to synthetic items from URL params
+        // if the shelf DB write hasn't committed yet (race condition after visit log)
         let iA: ShelfItem | undefined
         let iB: ShelfItem | undefined
         if (instantA && instantB) {
@@ -266,6 +269,29 @@ function FaceoffPageInner() {
           iB = items.find(
             (it) => it.cafeId === instantB || it.brandId === instantB
           )
+          // Synthetic fallback: construct minimal ShelfItem from URL params
+          if (!iA && instantAName) {
+            iA = {
+              id: instantA,
+              cafeId: instantA,
+              brandId: null,
+              displayName: instantAName,
+              score: 1200,
+              rank: 999,
+              comparisons_count: 0,
+            }
+          }
+          if (!iB && instantBName) {
+            iB = {
+              id: instantB,
+              cafeId: instantB,
+              brandId: null,
+              displayName: instantBName,
+              score: 1200,
+              rank: 999,
+              comparisons_count: 0,
+            }
+          }
         }
         setQueue(buildPairs(items, iA, iB))
       } catch {
