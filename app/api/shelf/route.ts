@@ -33,18 +33,21 @@ export async function GET(request: Request) {
     if (authError || !user)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Resolve category slug → UUID
+    // Resolve category slug → UUID (use maybeSingle + explicit null-check)
     const catRes = await supabase
       .from('categories')
       .select('id')
       .eq('slug', categorySlug)
-      .single()
-    if (catRes.error || !catRes.data)
+      .maybeSingle()
+
+    if (catRes.error || !catRes.data) {
       return NextResponse.json(
         { error: `Unknown category: ${categorySlug}` },
         { status: 400 }
       )
-    const categoryId = catRes.data.id
+    }
+
+    const categoryId: string = catRes.data.id
 
     const raw = await supabase
       .from('shelf_items')
@@ -62,7 +65,6 @@ export async function GET(request: Request) {
     const items = ((raw.data ?? []) as unknown as RawRow[]).map((row) => {
       const cafe = Array.isArray(row.cafes) ? row.cafes[0] : row.cafes
       const brand = Array.isArray(row.brands) ? row.brands[0] : row.brands
-
       const displayName =
         row.display_name ??
         (brand?.name
@@ -70,7 +72,6 @@ export async function GET(request: Request) {
           : null) ??
         cafe?.name ??
         'Unknown café'
-
       return {
         id: row.id,
         cafeId: row.cafe_id,
@@ -79,7 +80,8 @@ export async function GET(request: Request) {
         score: row.score ?? 1200,
         rank: row.rank ?? 999,
         comparisons_count: row.comparisons_count ?? 0,
-        logoUrl: (brand as { logo_url?: string | null } | null)?.logo_url ?? null,
+        logoUrl:
+          (brand as { logo_url?: string | null } | null)?.logo_url ?? null,
       }
     })
 
