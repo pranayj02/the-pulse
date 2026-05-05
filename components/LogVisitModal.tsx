@@ -3,16 +3,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  MapPin,
   Search,
   X,
   Loader2,
-  ChevronRight,
   CalendarDays,
   CheckCircle2,
-  AlertCircle,
   Trophy,
   SkipForward,
+  Camera,
+  Star,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { initBS, advanceBS, getCurrentOpponent } from '@/lib/faceoff-queue'
@@ -32,19 +31,35 @@ type SearchCafeResult = {
 
 type Phase = 'form' | 'faceoff' | 'done'
 
-export function LogVisitModal({ onClose }: { onClose: () => void }) {
+type Props = {
+  onClose: () => void
+  prefillCafe?: SearchCafeResult | null
+}
+
+function Monogram({ name }: { name: string }) {
+  const initials = name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-sm font-semibold text-white">
+      {initials}
+    </div>
+  )
+}
+
+export function LogVisitModal({ onClose, prefillCafe }: Props) {
   const router = useRouter()
 
   // ── Form state ─────────────────────────────────────────────────────────────
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchCafeResult[]>([])
   const [searching, setSearching] = useState(false)
-  const [selectedCafe, setSelectedCafe] = useState<SearchCafeResult | null>(null)
+  const [selectedCafe, setSelectedCafe] = useState<SearchCafeResult | null>(prefillCafe ?? null)
   const [note, setNote] = useState('')
   const [visitedAt, setVisitedAt] = useState(new Date().toISOString().slice(0, 10))
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
-  // ── Face-off state ─────────────────────────────────────────────────────────
+  // ── Faceoff state ──────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('form')
   const [seededCafeId, setSeededCafeId] = useState<string | null>(null)
   const [seededDisplayName, setSeededDisplayName] = useState<string | null>(null)
@@ -54,6 +69,7 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
   const [finalRank, setFinalRank] = useState<number | null>(null)
 
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Keyboard close ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -62,105 +78,93 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // ── Initial café list ──────────────────────────────────────────────────────
+  // ── Initial café list (only when no prefill) ───────────────────────────────
   useEffect(() => {
+    if (prefillCafe) return
     let mounted = true
-    async function load() {
-      try {
-        const res = await fetch('/api/cafes/search?q=')
-        if (!res.ok) throw new Error()
-        const data = await res.json()
-        if (mounted) setResults(data.cafes ?? [])
-      } catch {
-        if (mounted) setResults([])
-      }
-    }
-    load()
+    fetch('/api/cafes/search?q=')
+      .then((r) => r.json())
+      .then((d) => { if (mounted) setResults(d.cafes ?? []) })
+      .catch(() => {})
     return () => { mounted = false }
-  }, [])
+  }, [prefillCafe])
 
   // ── Search debounce ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (selectedCafe) return
+    if (prefillCafe || selectedCafe) return
     if (searchRef.current) clearTimeout(searchRef.current)
-
     searchRef.current = setTimeout(async () => {
+      setSearching(true)
       try {
-        setSearching(true)
         const res = await fetch(`/api/cafes/search?q=${encodeURIComponent(query)}`)
-        if (!res.ok) throw new Error()
-        const data = await res.json()
-        setResults(data.cafes ?? [])
+        const d = await res.json()
+        setResults(d.cafes ?? [])
       } catch {
         setResults([])
       } finally {
         setSearching(false)
       }
     }, 300)
-
     return () => { if (searchRef.current) clearTimeout(searchRef.current) }
-  }, [query, selectedCafe])
+  }, [query, selectedCafe, prefillCafe])
+
+  // ── Image picker ───────────────────────────────────────────────────────────
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []).slice(0, 3)
+    setImageFiles(files)
+    const previews = files.map((f) => URL.createObjectURL(f))
+    setImagePreviews(previews)
+  }
 
   // ── Submit visit ───────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (!selectedCafe) { toast.error('Please select a café.'); return }
-
+    setSaving(true)
     try {
-      setSaving(true)
-
       const res = await fetch('/api/visits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cafeId: selectedCafe.id ?? null,
-          cafe: {
-            id: selectedCafe.id ?? null,
+          cafe: selectedCafe.id ? undefined : {
             osm_place_id: selectedCafe.osm_place_id ?? null,
             name: selectedCafe.name,
             city: selectedCafe.city,
-            address: selectedCafe.address,
+            address: selectedCafe.address ?? selectedCafe.city ?? selectedCafe.name,
             lat: selectedCafe.lat ?? null,
             lng: selectedCafe.lng ?? null,
           },
-          note,
+          note: note.trim() || null,
           visitedAt,
         }),
       })
-
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Could not log visit.')
 
+      // Cap shelf to 7 items max → guarantees ≤ 3 ELO rounds (ceil(log2(8)) = 3)
       const shelfCafes: ShelfCafe[] = Array.isArray(data.shelfCafes)
-        ? data.shelfCafes.filter((c: ShelfCafe) => c.cafeId && c.displayName)
+        ? (data.shelfCafes as ShelfCafe[])
+            .filter((c) => c.cafeId && c.displayName)
+            .slice(0, 7)
         : []
 
       if (data.cafeId && data.categoryId && shelfCafes.length > 0) {
-        // Start binary search — O(log n) comparisons
         const bs = initBS(shelfCafes)
         setSeededCafeId(data.cafeId)
         setSeededDisplayName(data.cafeDisplayName ?? selectedCafe.name)
         setCategoryId(data.categoryId)
         setBsState(bs)
-
         if (bs.done) {
-          // Only 0 items on shelf — already ranked #1, go straight to done
           setFinalRank(1)
           setPhase('done')
         } else {
           setPhase('faceoff')
-          toast.success('Visit logged! Rank it on your shelf.')
+          toast.success('Visit logged! Quick ranking…')
         }
       } else {
-        // Unmatched or first-ever visit — no face-off needed
-        toast.success(
-          data.brandMatchStatus === 'matched'
-            ? `Visit to ${selectedCafe.name} logged.`
-            : data.brandMatchStatus === 'pending'
-              ? 'Visit logged. Brand match will be reviewed.'
-              : "Visit logged. We'll map this café to a brand soon."
-        )
+        toast.success(`${selectedCafe.name} logged!`)
         onClose()
-        router.refresh()
+        router.push('/')
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not log visit.')
@@ -169,18 +173,15 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  // ── Handle a face-off pick ─────────────────────────────────────────────────
+  // ── Faceoff pick ───────────────────────────────────────────────────────────
   async function handlePick(newCafeWon: boolean) {
     if (!seededCafeId || !categoryId || !bsState || faceoffLoading) return
-
     const opponent = getCurrentOpponent(bsState)
     if (!opponent) return
 
+    setFaceoffLoading(true)
     try {
-      setFaceoffLoading(true)
-
       const winnerId = newCafeWon ? seededCafeId : opponent.cafeId
-
       const res = await fetch('/api/faceoff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,21 +192,15 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
           winnerCafeId: winnerId,
         }),
       })
-
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Could not save face-off.')
 
-      // Advance the binary search
       const nextBS = advanceBS(bsState, newCafeWon)
       setBsState(nextBS)
 
       if (nextBS.done) {
-        // Binary search complete — insertion rank is determined
         setFinalRank(nextBS.insertionRank)
         setPhase('done')
-        router.refresh()
-      } else {
-        // More comparisons needed — next opponent is the new midpoint
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save face-off.')
@@ -214,280 +209,260 @@ export function LogVisitModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  function handleSkipAll() {
-    setPhase('done')
-    router.refresh()
+  function handleDone() {
+    router.push('/')
   }
 
   const currentOpponent = bsState ? getCurrentOpponent(bsState) : null
-  const showEmptyState = !searching && results.length === 0 && query.trim().length >= 2
-
-  // Progress: how far through the binary search are we
   const maxSteps = bsState?.maxSteps ?? 1
   const currentStep = bsState?.step ?? 1
-  const progressPct = maxSteps > 0 ? ((currentStep - 1) / maxSteps) * 100 : 0
+  const progressPct = maxSteps > 0 ? Math.min(((currentStep - 1) / maxSteps) * 100, 100) : 0
+  const showSearch = !prefillCafe && !selectedCafe
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-2xl rounded-t-3xl bg-[#1c1b19] p-6 sm:rounded-3xl sm:p-8">
+      <div className="w-full max-w-lg rounded-t-3xl bg-[#1c1b19] sm:rounded-3xl overflow-hidden shadow-2xl">
 
         {/* ── PHASE: FORM ──────────────────────────────────────────────────── */}
         {phase === 'form' && (
-          <>
-            <div className="mb-6 flex items-center justify-between">
+          <div className="p-6 sm:p-7">
+            {/* Header */}
+            <div className="mb-5 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-white">Log a visit</h2>
-                <p className="mt-1 text-sm text-muted">
-                  Pick the café. Chun will map the operator brand automatically.
-                </p>
+                <h2 className="text-base font-semibold text-white">Log a visit</h2>
+                {selectedCafe && (
+                  <p className="mt-0.5 text-sm text-[var(--color-text-muted)] truncate max-w-xs">
+                    {selectedCafe.name}
+                    {selectedCafe.city ? ` · ${selectedCafe.city}` : ''}
+                  </p>
+                )}
               </div>
-              <button onClick={onClose} className="rounded-full p-2 hover:bg-white/10" aria-label="Close">
-                <X size={18} className="text-muted" />
+              <button onClick={onClose} className="shrink-0 rounded-full p-2 hover:bg-white/10 transition" aria-label="Close">
+                <X size={16} className="text-[var(--color-text-muted)]" />
               </button>
             </div>
 
-            {!selectedCafe ? (
-              <div className="mb-5">
-                <label className="mb-2 block text-xs uppercase tracking-widest text-faint">
+            {/* Search (only if no prefill) */}
+            {showSearch && (
+              <div className="mb-4">
+                <label className="mb-2 block text-xs uppercase tracking-widest text-[var(--color-text-faint)]">
                   Search café
                 </label>
                 <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   {searching
-                    ? <Loader2 size={16} className="shrink-0 animate-spin text-muted" />
-                    : <Search size={16} className="shrink-0 text-muted" />
+                    ? <Loader2 size={15} className="shrink-0 animate-spin text-[var(--color-text-muted)]" />
+                    : <Search size={15} className="shrink-0 text-[var(--color-text-muted)]" />
                   }
                   <input
                     autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search cafés by name or area..."
-                    className="w-full bg-transparent text-sm text-white outline-none placeholder:text-faint"
+                    placeholder="Search cafés by name or area…"
+                    className="w-full bg-transparent text-sm text-white outline-none placeholder:text-[var(--color-text-faint)]"
                   />
                 </div>
-
                 {results.length > 0 && (
-                  <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-white/10 bg-white/5">
-                    {results.map((cafe, index) => (
+                  <div className="mt-2 max-h-48 overflow-y-auto rounded-2xl border border-white/10 bg-white/5">
+                    {results.map((cafe, i) => (
                       <button
-                        key={cafe.id ?? cafe.osm_place_id ?? `${cafe.name}-${index}`}
+                        key={cafe.id ?? cafe.osm_place_id ?? `${cafe.name}-${i}`}
                         onClick={() => { setSelectedCafe(cafe); setQuery(cafe.name) }}
-                        className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-white/10"
-                        type="button"
+                        className="flex w-full items-center gap-3 border-b border-white/5 px-4 py-3 text-left transition last:border-0 hover:bg-white/[0.05]"
                       >
-                        <MapPin size={14} className="mt-0.5 shrink-0 text-accent" />
-                        <div>
-                          <p className="text-sm font-medium text-white">{cafe.name}</p>
-                          <p className="text-xs text-muted">
-                            {[cafe.city, cafe.address].filter(Boolean).join(' · ')}
-                          </p>
+                        <Monogram name={cafe.name} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-white">{cafe.name}</p>
+                          {cafe.city && (
+                            <p className="truncate text-xs text-[var(--color-text-faint)]">{cafe.city}</p>
+                          )}
                         </div>
                       </button>
                     ))}
                   </div>
                 )}
-
-                {showEmptyState && (
-                  <p className="mt-3 text-center text-sm text-muted">
-                    No cafés found. Try a more specific name or area.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="mb-5 rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <MapPin size={14} className="mt-0.5 text-accent" />
-                    <div>
-                      <p className="text-sm font-semibold text-white">{selectedCafe.name}</p>
-                      <p className="text-xs text-muted">
-                        {[selectedCafe.city, selectedCafe.address].filter(Boolean).join(' · ')}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { setSelectedCafe(null); setQuery('') }}
-                    className="rounded-full p-1 hover:bg-white/10"
-                    aria-label="Change café"
-                    type="button"
-                  >
-                    <X size={14} className="text-muted" />
-                  </button>
-                </div>
-
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs text-muted">
-                  <div className="flex items-center gap-2">
-                    {selectedCafe.brand_match_status === 'matched'
-                      ? <CheckCircle2 size={14} className="text-emerald-400" />
-                      : <AlertCircle size={14} className="text-amber-400" />
-                    }
-                    <span>
-                      {selectedCafe.brand_match_status === 'matched'
-                        ? 'Operator brand already linked for this café.'
-                        : 'Operator brand will be matched automatically after logging.'}
-                    </span>
-                  </div>
-                </div>
               </div>
             )}
 
-            <div className="mb-4">
-              <label className="mb-2 flex items-center gap-2 text-xs uppercase tracking-widest text-faint">
-                <CalendarDays size={12} />
-                <span>Date visited</span>
-              </label>
-              <input
-                type="date"
-                value={visitedAt}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setVisitedAt(e.target.value)}
-                className="input w-full"
-              />
-            </div>
+            {/* Fields (shown once cafe is selected) */}
+            {selectedCafe && (
+              <div className="space-y-4">
+                {/* Date */}
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-widest text-[var(--color-text-faint)]">
+                    <CalendarDays size={11} /> Date visited
+                  </label>
+                  <input
+                    type="date"
+                    value={visitedAt}
+                    onChange={(e) => setVisitedAt(e.target.value)}
+                    max={new Date().toISOString().slice(0, 10)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)]/10 transition"
+                  />
+                </div>
 
-            <div className="mb-6">
-              <label className="mb-2 block text-xs uppercase tracking-widest text-faint">
-                Note (optional)
-              </label>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="What stood out?"
-                rows={3}
-                className="input w-full resize-none"
-              />
-            </div>
+                {/* Note */}
+                <div>
+                  <label className="mb-1.5 block text-xs uppercase tracking-widest text-[var(--color-text-faint)]">
+                    Notes <span className="normal-case text-[var(--color-text-faint)]/50">(optional)</span>
+                  </label>
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="What did you try? How was the vibe?"
+                    rows={2}
+                    maxLength={280}
+                    className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-[var(--color-text-faint)] focus:border-[var(--color-accent)]/40 focus:ring-2 focus:ring-[var(--color-accent)]/10 transition"
+                  />
+                </div>
 
-            <div className="flex gap-3">
-              <button onClick={onClose} className="cta-secondary flex-1" type="button">
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={!selectedCafe || saving}
-                className="cta-primary flex-1 disabled:cursor-not-allowed disabled:opacity-60"
-                type="button"
-              >
-                {saving
-                  ? <Loader2 size={16} className="animate-spin" />
-                  : <><span>Log visit</span><ChevronRight size={16} /></>
-                }
-              </button>
-            </div>
-          </>
+                {/* Photos */}
+                <div>
+                  <label className="mb-1.5 block text-xs uppercase tracking-widest text-[var(--color-text-faint)]">
+                    Photos <span className="normal-case text-[var(--color-text-faint)]/50">(up to 3)</span>
+                  </label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageChange}
+                    className="sr-only"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-[var(--color-text-muted)] transition hover:bg-white/10"
+                    >
+                      <Camera size={15} />
+                      {imageFiles.length > 0 ? `${imageFiles.length} photo${imageFiles.length > 1 ? 's' : ''} selected` : 'Add photos'}
+                    </button>
+                    {imagePreviews.map((src, i) => (
+                      <div key={i} className="relative h-10 w-10 overflow-hidden rounded-xl border border-white/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt="" className="h-full w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Submit */}
+                <button
+                  onClick={handleSubmit}
+                  disabled={saving}
+                  className="mt-1 w-full rounded-2xl bg-[var(--color-accent)] py-3.5 text-sm font-semibold text-[#111315] transition hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {saving
+                    ? <><Loader2 size={16} className="animate-spin" /> Logging…</>
+                    : 'Log visit & rank it →'
+                  }
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* ── PHASE: FACEOFF ───────────────────────────────────────────────── */}
-        {phase === 'faceoff' && currentOpponent && bsState && (
-          <>
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-white">Rank it on your shelf</h2>
-                <p className="mt-1 text-sm text-muted">
-                  {currentStep} of ~{maxSteps} · Which do you prefer?
+        {phase === 'faceoff' && currentOpponent && (
+          <div className="p-6 sm:p-7">
+            {/* Progress */}
+            <div className="mb-5">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs uppercase tracking-widest text-[var(--color-text-faint)]">
+                  Quick ranking · {currentStep} of {maxSteps}
                 </p>
+                <button
+                  onClick={() => { setPhase('done'); setFinalRank(null) }}
+                  className="flex items-center gap-1 text-xs text-[var(--color-text-faint)] transition hover:text-[var(--color-text-muted)]"
+                >
+                  <SkipForward size={12} /> Skip
+                </button>
               </div>
-              <button
-                onClick={handleSkipAll}
-                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs text-muted hover:bg-white/10"
-                type="button"
-              >
-                <SkipForward size={13} />
-                Skip
-              </button>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-[var(--color-accent)] transition-all duration-500"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
             </div>
 
-            {/* Progress bar */}
-            <div className="mb-6 h-1 w-full overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-accent transition-all duration-300"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
+            <p className="mb-5 text-center text-sm text-[var(--color-text-muted)]">
+              Which do you prefer?
+            </p>
 
-            {/* Face-off cards */}
-            <div className="mb-4 grid grid-cols-2 gap-3">
+            {/* Battle cards */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* New cafe */}
               <button
                 onClick={() => handlePick(true)}
                 disabled={faceoffLoading}
-                className="relative flex min-h-[128px] flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center transition hover:border-accent/40 hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-60"
-                type="button"
+                className="group flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-5 text-center transition hover:border-[var(--color-accent)]/40 hover:bg-[var(--color-accent)]/5 active:scale-[0.98] disabled:opacity-50"
               >
-                {faceoffLoading && (
-                  <Loader2 size={14} className="absolute right-3 top-3 animate-spin text-muted" />
-                )}
-                <span className="text-xs uppercase tracking-widest text-accent">Just visited</span>
-                <span className="text-sm font-semibold text-white">
-                  {seededDisplayName ?? 'New café'}
-                </span>
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-accent)]/15 text-lg font-bold text-[var(--color-accent)]">
+                  {(seededDisplayName ?? '?')[0].toUpperCase()}
+                </div>
+                <p className="text-sm font-semibold text-white leading-tight">
+                  {seededDisplayName}
+                </p>
+                <span className="text-xs text-[var(--color-text-faint)]">New visit</span>
               </button>
 
+              {/* Opponent */}
               <button
                 onClick={() => handlePick(false)}
                 disabled={faceoffLoading}
-                className="relative flex min-h-[128px] flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center transition hover:border-white/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                type="button"
+                className="group flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-5 text-center transition hover:border-white/20 hover:bg-white/[0.07] active:scale-[0.98] disabled:opacity-50"
               >
-                {faceoffLoading && (
-                  <Loader2 size={14} className="absolute right-3 top-3 animate-spin text-muted" />
-                )}
-                <span className="text-xs uppercase tracking-widest text-faint">On your shelf</span>
-                <span className="text-sm font-semibold text-white">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-lg font-bold text-white">
+                  {currentOpponent.displayName[0].toUpperCase()}
+                </div>
+                <p className="text-sm font-semibold text-white leading-tight">
                   {currentOpponent.displayName}
-                </span>
+                </p>
+                <span className="text-xs text-[var(--color-text-faint)]">#{currentOpponent.rank} on shelf</span>
               </button>
             </div>
 
-            <p className="text-center text-xs text-faint">
-              Tap the one you prefer. Your shelf updates instantly.
-            </p>
-          </>
+            {faceoffLoading && (
+              <div className="mt-4 flex justify-center">
+                <Loader2 size={18} className="animate-spin text-[var(--color-text-muted)]" />
+              </div>
+            )}
+          </div>
         )}
 
         {/* ── PHASE: DONE ──────────────────────────────────────────────────── */}
         {phase === 'done' && (
-          <>
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Shelf updated</h2>
-              <button onClick={onClose} className="rounded-full p-2 hover:bg-white/10" aria-label="Close">
-                <X size={18} className="text-muted" />
-              </button>
-            </div>
-
-            <div className="mb-8 flex flex-col items-center gap-4 py-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/15">
-                <Trophy size={26} className="text-accent" />
-              </div>
-              <div>
-                <p className="text-base font-semibold text-white">
-                  {seededDisplayName ?? 'New café'} is ranked
-                </p>
-                {finalRank ? (
-                  <p className="mt-1 text-4xl font-bold text-accent">
-                    #{finalRank}
-                    <span className="ml-2 text-base font-normal text-muted">on your shelf</span>
-                  </p>
-                ) : (
-                  <p className="mt-1 text-sm text-muted">Your shelf rankings have been updated.</p>
-                )}
+          <div className="p-6 sm:p-7 text-center">
+            <div className="mb-4 flex justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-success)]/15">
+                {finalRank !== null
+                  ? <Trophy size={28} className="text-[var(--color-accent)]" />
+                  : <CheckCircle2 size={28} className="text-[var(--color-success)]" />
+                }
               </div>
             </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => { onClose(); router.push('/shelf') }}
-                className="cta-secondary flex-1"
-                type="button"
-              >
-                View shelf
-              </button>
-              <button onClick={onClose} className="cta-primary flex-1" type="button">
-                Done
-              </button>
-            </div>
-          </>
+            <h3 className="text-lg font-semibold text-white">
+              {finalRank !== null
+                ? finalRank === 1
+                  ? '🏆 New #1 on your shelf!'
+                  : `Ranked #${finalRank} on your shelf`
+                : 'Visit logged!'
+              }
+            </h3>
+            <p className="mt-1.5 text-sm text-[var(--color-text-muted)]">
+              {seededDisplayName ?? selectedCafe?.name ?? 'This café'} has been added to your shelf.
+            </p>
+            <button
+              onClick={handleDone}
+              className="mt-6 w-full rounded-2xl bg-[var(--color-accent)] py-3.5 text-sm font-semibold text-[#111315] transition hover:opacity-90"
+            >
+              Go home →
+            </button>
+          </div>
         )}
 
       </div>
