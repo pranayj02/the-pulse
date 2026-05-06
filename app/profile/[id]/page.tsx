@@ -264,7 +264,7 @@ export default async function PublicProfilePage({
 
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
-      <Header active="profile" />
+      <Header />
 
       <div className="container space-y-6">
         <section className="card-strong p-6 md:p-8">
