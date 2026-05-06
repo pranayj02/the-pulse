@@ -32,7 +32,7 @@ export default async function LeaderboardPage() {
   if (!user) {
     return (
       <main id="main-content" className="page-shell bottom-nav-space">
-        <Header active="leaderboard" />
+        <Header />
         <div className="container">
           <section className="card p-6">
             <p className="text-sm text-muted">
@@ -90,7 +90,7 @@ export default async function LeaderboardPage() {
 
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
-      <Header active="leaderboard" />
+      <Header />
 
       <div className="container space-y-6">
         <section className="card-strong p-6 md:p-8">
