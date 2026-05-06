@@ -108,7 +108,6 @@ export default function OnboardingPage() {
                   <CategoryPill
                     emoji={category.emoji}
                     label={category.name}
-                    active={selectedCategory === category.slug}
                   />
                 </button>
               ))}
