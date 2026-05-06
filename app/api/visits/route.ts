@@ -193,7 +193,7 @@ export async function POST(request: Request) {
           primary_brand_id: match.brandId,
           brand_match_status: match.status,
         })
-        .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
+        .select('id, name, city, address, lat, lng, osm_place_id, primary_brand_id, brand_match_status')
         .single()
 
       if (insertCafeRes.error) return NextResponse.json({ error: insertCafeRes.error.message }, { status: 500 })
