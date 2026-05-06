@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { geocodeCafe } from '@/lib/geocode'
+import { awardXP } from '@/lib/award-xp'
 import type { Database } from '@/lib/database.types'
 
 type VisitRequestBody = {
@@ -325,6 +326,20 @@ export async function POST(request: Request) {
         }))
     }
     // ── End shelf seed ────────────────────────────────────────────────────────
+
+    // ── Award XP for logging a visit + check explorer badge ─────────────────
+    const { count: totalVisits } = await supabase
+      .from('cafe_visits')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+
+    await awardXP(supabase, user.id, 5, [
+      {
+        slug: 'explorer',
+        xpReward: 25,
+        condition: (totalVisits ?? 0) + 1 >= 3,
+      },
+    ])
 
     return NextResponse.json({
       success: true,
