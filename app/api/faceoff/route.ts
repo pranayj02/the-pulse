@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/database.types'
+import { awardXP } from '@/lib/award-xp'
 
 const K_FACTOR = 32
 const DEFAULT_ELO = 1200
@@ -201,6 +202,28 @@ export async function POST(request: Request) {
     const winnerNewRank =
       rankUpdates.find((r) => r.id === (aWon ? rowA.id : rowB.id))?.rank ??
       null
+
+    // ── 7. Award XP + check badges ────────────────────────────────────────────
+    const totalFaceoffs = (rankUpdates.length > 0)
+      ? await supabase
+          .from('comparisons')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .then((r: { count: number | null }) => (r.count ?? 0) + 1)
+      : 1
+
+    await awardXP(supabase, user.id, 2, [
+      {
+        slug: 'first_sip',
+        xpReward: 25,
+        condition: totalFaceoffs >= 1,
+      },
+      {
+        slug: 'power_brewer',
+        xpReward: 25,
+        condition: totalFaceoffs >= 100,
+      },
+    ])
 
     return NextResponse.json({
       success: true,
