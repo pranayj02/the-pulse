@@ -347,7 +347,7 @@ export default function HomePage() {
 
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
-      <Header active="home" />
+      <Header />
 
       <div className="container space-y-6">
         {loadError && (
