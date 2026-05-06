@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { Header } from '@/components/Header'
+import { ShelfClient, type ShelfItem } from '@/components/ShelfClient'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
@@ -13,28 +13,8 @@ type ShelfRow = {
   rank: number
   score: number
   comparisons_count: number
-  cafes: { name: string | null; city: string | null } | null
+  cafes: { name: string | null; city: string | null; address: string | null; lat: number | null; lng: number | null } | null
   brands: { name: string | null; origin_city: string | null } | null
-}
-
-function buildScoreMap(shelf: ShelfRow[]): Map<string, string> {
-  if (shelf.length === 0) return new Map()
-  if (shelf.length === 1) return new Map([[shelf[0].id, '10.0']])
-  const total = shelf.length
-  return new Map(
-    shelf.map((r) => {
-      // Rank 1 = 10.0, rank N = 1.0, perfectly linear
-      const val = 10 - ((r.rank - 1) / (total - 1)) * 9
-      return [r.id, val.toFixed(1)]
-    })
-  )
-}
-
-function rankColor(rank: number): string {
-  if (rank === 1) return '#f5c542'
-  if (rank === 2) return '#cbd5e1'
-  if (rank === 3) return '#cd7c3c'
-  return 'var(--color-text-faint)'
 }
 
 export default async function ShelfPage() {
@@ -52,14 +32,13 @@ export default async function ShelfPage() {
   const { data: rawShelf } = categoryId
     ? await supabase
         .from('shelf_items')
-        .select('id, cafe_id, brand_id, display_name, rank, score, comparisons_count, cafes(name, city), brands(name, origin_city)')
+        .select('id, cafe_id, brand_id, display_name, rank, score, comparisons_count, cafes(name, city, address, lat, lng), brands(name, origin_city)')
         .eq('user_id', user.id)
         .eq('category_id', categoryId)
         .order('rank', { ascending: true })
     : { data: [] }
 
   const shelf = (rawShelf ?? []) as unknown as ShelfRow[]
-  const scoreMap = buildScoreMap(shelf)
 
   function getName(row: ShelfRow) {
     return row.display_name ?? row.cafes?.name ?? row.brands?.name ?? 'Unknown'
@@ -67,6 +46,19 @@ export default async function ShelfPage() {
   function getMeta(row: ShelfRow) {
     return row.cafes?.city ?? row.brands?.origin_city ?? null
   }
+
+  const items: ShelfItem[] = shelf.map((row) => ({
+    id: row.id,
+    name: getName(row),
+    meta: getMeta(row),
+    rank: row.rank,
+    score: row.score,
+    comparisons_count: row.comparisons_count,
+    lat: row.cafes?.lat ?? null,
+    lng: row.cafes?.lng ?? null,
+  }))
+
+  const mapPinCount = items.filter((i) => i.lat && i.lng).length
 
   return (
     <>
@@ -82,60 +74,38 @@ export default async function ShelfPage() {
         </div>
 
         {/* Stats row */}
-        {shelf.length > 0 && (
+        {items.length > 0 && (
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr',
-            gap: 10, marginBottom: 16,
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+            gap: 8, marginBottom: 16,
           }}>
-            <div className="card-inset" style={{ padding: '14px 16px' }}>
-              <p style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-faint)', marginBottom: 4 }}>Ranked</p>
-              <p style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text)', fontFamily: "'Clash Display', sans-serif" }}>{shelf.length}</p>
+            <div className="card-inset" style={{ padding: '12px 14px' }}>
+              <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-faint)', marginBottom: 4 }}>Ranked</p>
+              <p style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)' }}>{items.length}</p>
             </div>
-            <div className="card-inset" style={{ padding: '14px 16px' }}>
-              <p style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-faint)', marginBottom: 4 }}>Top Pick</p>
-              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-accent)', fontFamily: "'Clash Display', sans-serif", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {shelf[0] ? getName(shelf[0]) : '—'}
+            <div className="card-inset" style={{ padding: '12px 14px' }}>
+              <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-faint)', marginBottom: 4 }}>Top Pick</p>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {items[0]?.name ?? '—'}
               </p>
+            </div>
+            <div className="card-inset" style={{ padding: '12px 14px' }}>
+              <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-faint)', marginBottom: 4 }}>On Map</p>
+              <p style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)' }}>{mapPinCount}</p>
             </div>
           </div>
         )}
 
-        {/* Shelf list */}
-        {shelf.length === 0 ? (
+        {/* Empty state */}
+        {items.length === 0 ? (
           <div style={{ textAlign: 'center', paddingTop: 64, paddingBottom: 32 }}>
-            <p className="section-title" style={{ marginBottom: 8 }}>Your shelf is empty</p>
+            <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>Your shelf is empty</p>
             <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 20, maxWidth: '26ch', marginInline: 'auto' }}>
               Log a café visit and rank it to build your shelf.
             </p>
-            <Link href="/discover" className="btn-primary">Discover cafés</Link>
           </div>
         ) : (
-          <div className="card">
-            {shelf.map((row) => {
-              const name  = getName(row)
-              const meta  = getMeta(row)
-              const score = scoreMap.get(row.id) ?? '—'
-              return (
-                <div key={row.id} className="list-item">
-                  {/* Rank */}
-                  <span className="rank-num" style={{ color: rankColor(row.rank) }}>
-                    {row.rank}
-                  </span>
-
-                  {/* Body */}
-                  <div className="list-item-body">
-                    <p className="list-item-name">{name}</p>
-                    {meta && <p className="list-item-meta">{meta}</p>}
-                    <p style={{ fontSize: 11, color: 'var(--color-text-faint)', marginTop: 2 }}>
-                      {row.comparisons_count} match{row.comparisons_count !== 1 ? 'es' : ''}
-                    </p>
-                  </div>
-                  {/* Score badge */}
-                  <div className="score-badge score-badge-gold">{score}</div>
-                </div>
-              )
-            })}
-          </div>
+          <ShelfClient initialItems={items} categoryId={categoryId ?? ''} />
         )}
 
       </div>
