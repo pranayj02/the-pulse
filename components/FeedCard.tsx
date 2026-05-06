@@ -119,7 +119,6 @@ export function FeedCard({ item }: Props) {
       {/* ── Café row ── */}
       <div style={{ borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
         <div className="list-item" style={{ padding: '10px 14px' }}>
-          <CafeMonogram name={cafeName} />
           <div className="list-item-body">
             <p className="list-item-name">{cafeName}</p>
             {p.note && (
