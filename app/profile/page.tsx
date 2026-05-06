@@ -2,7 +2,6 @@ import Link from 'next/link'
 import {
   Award,
   MapPin,
-  Settings,
   Share2,
   Sparkles,
   Trophy,
@@ -12,6 +11,7 @@ import { XPBadge } from '@/components/XPBadge'
 import { BrandCard } from '@/components/BrandCard'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import type { Brand } from '@/lib/types'
+import { EditProfileButton } from '@/components/EditProfileButton'
 
 type ProfileRow = {
   id: string
@@ -326,10 +326,12 @@ export default async function ProfilePage() {
                 <span>Share profile</span>
               </button>
 
-              <button className="cta-secondary">
-                <Settings size={16} />
-                <span>Settings</span>
-              </button>
+              <EditProfileButton
+                initialName={profile?.full_name ?? null}
+                initialUsername={profile?.username ?? null}
+                initialCity={profile?.city ?? null}
+                initialBio={(profile as ProfileRow & { bio?: string | null })?.bio ?? null}
+              />
             </div>
           </div>
         </section>
