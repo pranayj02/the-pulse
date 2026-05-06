@@ -42,6 +42,8 @@ export function ShelfClient({
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
 
   // Drag state
   const dragIdx = useRef<number | null>(null)
@@ -198,10 +200,34 @@ export function ShelfClient({
           ) : (
             <ShelfMap pins={mapPins} />
           )}
-          {mapPins.length > 0 && mapPins.length < total && (
-            <p style={{ fontSize: 11, color: 'var(--color-text-faint)', marginTop: 8, textAlign: 'center' }}>
-              {total - mapPins.length} café{total - mapPins.length > 1 ? 's' : ''} missing location data
-            </p>
+          {mapPins.length < total && (
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <p style={{ fontSize: 11, color: 'var(--color-text-faint)' }}>
+                {total - mapPins.length} café{total - mapPins.length > 1 ? 's' : ''} missing coordinates
+              </p>
+              <button
+                onClick={async () => {
+                  setBackfilling(true)
+                  setBackfillMsg(null)
+                  try {
+                    const res = await fetch('/api/admin/geocode-backfill', { method: 'POST' })
+                    const data = await res.json()
+                    setBackfillMsg(`Fixed ${data.fixed} of ${data.total} cafés. Refresh to see updates.`)
+                  } catch {
+                    setBackfillMsg('Failed — try again')
+                  } finally {
+                    setBackfilling(false)
+                  }
+                }}
+                disabled={backfilling}
+                style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 999, background: 'rgba(245,197,66,0.12)', color: 'var(--color-accent)', border: '1px solid rgba(245,197,66,0.2)', whiteSpace: 'nowrap', opacity: backfilling ? 0.6 : 1 }}
+              >
+                {backfilling ? 'Fixing…' : 'Fix missing locations'}
+              </button>
+            </div>
+          )}
+          {backfillMsg && (
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6, textAlign: 'center' }}>{backfillMsg}</p>
           )}
         </div>
       )}
