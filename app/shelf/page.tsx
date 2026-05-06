@@ -20,19 +20,12 @@ type ShelfRow = {
 function buildScoreMap(shelf: ShelfRow[]): Map<string, string> {
   if (shelf.length === 0) return new Map()
   if (shelf.length === 1) return new Map([[shelf[0].id, '10.0']])
-
-  const scores = shelf.map((r) => r.score)
-  const maxScore = Math.max(...scores)
-  const minScore = Math.min(...scores)
-  const range = maxScore - minScore
-
+  const total = shelf.length
   return new Map(
     shelf.map((r) => {
-      // #1 (highest score) always = 10.0, last always = 1.0
-      const normalised = range === 0
-        ? 10
-        : 1 + ((r.score - minScore) / range) * 9
-      return [r.id, normalised.toFixed(1)]
+      // Rank 1 = 10.0, rank N = 1.0, perfectly linear
+      const val = 10 - ((r.rank - 1) / (total - 1)) * 9
+      return [r.id, val.toFixed(1)]
     })
   )
 }
@@ -122,15 +115,13 @@ export default async function ShelfPage() {
               const name  = getName(row)
               const meta  = getMeta(row)
               const score = scoreMap.get(row.id) ?? '—'
-              const letter = name[0]?.toUpperCase() ?? '?'
               return (
                 <div key={row.id} className="list-item">
                   {/* Rank */}
                   <span className="rank-num" style={{ color: rankColor(row.rank) }}>
                     {row.rank}
                   </span>
-                  {/* Monogram */}
-                  <div className="list-item-monogram">{letter}</div>
+
                   {/* Body */}
                   <div className="list-item-body">
                     <p className="list-item-name">{name}</p>
