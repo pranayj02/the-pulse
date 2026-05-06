@@ -37,23 +37,6 @@ function scoreToDisplay(score: number): string {
   return val.toFixed(1)
 }
 
-function CafeMonogram({ name }: { name: string }) {
-  const letter = name.trim()[0]?.toUpperCase() ?? '?'
-  return (
-    <div
-      style={{
-        width: 52, height: 52, borderRadius: 12, flexShrink: 0,
-        background: 'rgba(245,197,66,0.1)',
-        color: 'var(--color-accent)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 20, fontWeight: 700,
-      }}
-    >
-      {letter}
-    </div>
-  )
-}
-
 function EmptyState({ tab, empty }: { tab: TabKey; empty?: string }) {
   if (empty) {
     return (
@@ -207,7 +190,6 @@ export default function DiscoverPage() {
               const score = scoreToDisplay(rec.avgScore)
               return (
                 <div key={rec.cafeId} className="list-item" style={{ opacity: rec.alreadyVisited ? 0.55 : 1 }}>
-                  <CafeMonogram name={rec.name} />
                   <div className="list-item-body">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <p className="list-item-name">{rec.name}</p>
