@@ -96,7 +96,7 @@ export default async function ProfilePage() {
   if (!user) {
     return (
       <main id="main-content" className="page-shell bottom-nav-space">
-        <Header active="profile" />
+        <Header />
         <div className="container">
           <section className="card p-6">
             <p className="text-sm text-muted">
@@ -281,7 +281,7 @@ export default async function ProfilePage() {
 
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
-      <Header active="profile" />
+      <Header />
 
       <div className="container space-y-6">
         <section className="card-strong p-6 md:p-8">
