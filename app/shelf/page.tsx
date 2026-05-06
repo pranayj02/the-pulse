@@ -17,10 +17,24 @@ type ShelfRow = {
   brands: { name: string | null; origin_city: string | null } | null
 }
 
-function scoreToDisplay(score: number): string {
-  // ELO 1200 = 5.0, range roughly 800-1600. Map to 1.0-10.0
-  const val = Math.max(1, Math.min(10, ((score - 800) / 800) * 9 + 1))
-  return val.toFixed(1)
+function buildScoreMap(shelf: ShelfRow[]): Map<string, string> {
+  if (shelf.length === 0) return new Map()
+  if (shelf.length === 1) return new Map([[shelf[0].id, '10.0']])
+
+  const scores = shelf.map((r) => r.score)
+  const maxScore = Math.max(...scores)
+  const minScore = Math.min(...scores)
+  const range = maxScore - minScore
+
+  return new Map(
+    shelf.map((r) => {
+      // #1 (highest score) always = 10.0, last always = 1.0
+      const normalised = range === 0
+        ? 10
+        : 1 + ((r.score - minScore) / range) * 9
+      return [r.id, normalised.toFixed(1)]
+    })
+  )
 }
 
 function rankColor(rank: number): string {
@@ -52,6 +66,7 @@ export default async function ShelfPage() {
     : { data: [] }
 
   const shelf = (rawShelf ?? []) as unknown as ShelfRow[]
+  const scoreMap = buildScoreMap(shelf)
 
   function getName(row: ShelfRow) {
     return row.display_name ?? row.cafes?.name ?? row.brands?.name ?? 'Unknown'
@@ -106,7 +121,7 @@ export default async function ShelfPage() {
             {shelf.map((row) => {
               const name  = getName(row)
               const meta  = getMeta(row)
-              const score = scoreToDisplay(row.score)
+              const score = scoreMap.get(row.id) ?? '—'
               const letter = name[0]?.toUpperCase() ?? '?'
               return (
                 <div key={row.id} className="list-item">
