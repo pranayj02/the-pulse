@@ -18,6 +18,8 @@ type ProfileRow = {
   username: string | null
   full_name: string | null
   city: string | null
+  bio: string | null
+  avatar_url: string | null
   xp: number | null
   level: string | number | null
   is_early_bird: boolean | null
@@ -118,7 +120,7 @@ export default async function ProfilePage() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, username, full_name, city, xp, level, is_early_bird, is_pioneer')
+      .select('id, username, full_name, city, bio, avatar_url, xp, level, is_early_bird, is_pioneer')
       .eq('id', user.id)
       .single(),
 
