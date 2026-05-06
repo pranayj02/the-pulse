@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { geocodeCafe } from '@/lib/geocode'
 import type { Database } from '@/lib/database.types'
 
 type VisitRequestBody = {
@@ -29,6 +30,8 @@ type CafeRow = {
   name: string
   city: string | null
   address: string | null
+  lat: number | null
+  lng: number | null
   osm_place_id: string | null
   primary_brand_id: string | null
   brand_match_status: 'matched' | 'pending' | 'unmatched' | null
@@ -136,7 +139,7 @@ export async function POST(request: Request) {
     if (!resolvedCafeId && cafe?.osm_place_id) {
       const existingRes = await supabase
         .from('cafes')
-        .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
+        .select('id, name, city, address, lat, lng, osm_place_id, primary_brand_id, brand_match_status')
         .eq('osm_place_id', cafe.osm_place_id)
         .maybeSingle()
 
@@ -150,7 +153,7 @@ export async function POST(request: Request) {
     if (resolvedCafeId && !resolvedCafe) {
       const cafeRes = await supabase
         .from('cafes')
-        .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
+        .select('id, name, city, address, lat, lng, osm_place_id, primary_brand_id, brand_match_status')
         .eq('id', resolvedCafeId)
         .maybeSingle()
 
@@ -205,6 +208,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Geocode existing cafes that are missing coordinates ─────────────────────
+    if (resolvedCafe && (!resolvedCafe.lat || !resolvedCafe.lng)) {
+      const geo = await geocodeCafe(resolvedCafe.name, resolvedCafe.city, resolvedCafe.address)
+      if (geo) {
+        await (supabase as any)
+          .from('cafes')
+          .update({ lat: geo.lat, lng: geo.lng })
+          .eq('id', resolvedCafeId)
+        resolvedCafe = { ...resolvedCafe, lat: geo.lat, lng: geo.lng }
+      }
+    }
+
     // ── Re-attempt brand match for existing unmatched cafes ───────────────────
     if (!resolvedCafe!.primary_brand_id && resolvedCafe!.name) {
       const match = await findBestBrandMatch(supabase, resolvedCafe!.name)
@@ -214,7 +229,7 @@ export async function POST(request: Request) {
           .from('cafes')
           .update({ primary_brand_id: match.brandId, brand_match_status: match.status })
           .eq('id', resolvedCafeId!)
-          .select('id, name, city, address, osm_place_id, primary_brand_id, brand_match_status')
+          .select('id, name, city, address, lat, lng, osm_place_id, primary_brand_id, brand_match_status')
           .single()
 
         if (updateRes.error) return NextResponse.json({ error: updateRes.error.message }, { status: 500 })
