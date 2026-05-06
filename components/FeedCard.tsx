@@ -44,15 +44,6 @@ function Monogram({ name, size = 36 }: { name: string; size?: number }) {
   )
 }
 
-function CafeMonogram({ name }: { name: string }) {
-  const letter = name.trim()[0]?.toUpperCase() ?? '?'
-  return (
-    <div className="list-item-monogram">
-      {letter}
-    </div>
-  )
-}
-
 export function FeedCard({ item }: Props) {
   const p = item.payload
   const [liked, setLiked] = useState(p.isLiked)
