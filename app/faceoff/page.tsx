@@ -375,7 +375,7 @@ function FaceoffPageInner() {
   if (loading) {
     return (
       <main id="main-content" className="page-shell bottom-nav-space">
-        <Header active="home" />
+        <Header />
         <div className="container">
           <LoadingSkeleton />
         </div>
@@ -386,7 +386,7 @@ function FaceoffPageInner() {
   if (shelf.length < 2) {
     return (
       <main id="main-content" className="page-shell bottom-nav-space">
-        <Header active="home" />
+        <Header />
         <div className="container">
           <div className="mx-auto max-w-2xl">
             <EmptyShelf />
@@ -399,7 +399,7 @@ function FaceoffPageInner() {
   if (picksToday > 0 && isLast && !pickedId) {
     return (
       <main id="main-content" className="page-shell bottom-nav-space">
-        <Header active="home" />
+        <Header />
         <div className="container">
           <div className="mx-auto max-w-2xl">
             <SessionComplete
@@ -419,7 +419,7 @@ function FaceoffPageInner() {
   // ── Main face-off ────────────────────────────────────────────────────────
   return (
     <main id="main-content" className="page-shell bottom-nav-space">
-      <Header active="home" />
+      <Header />
 
       <div className="container space-y-6">
         <section className="card-strong p-6 md:p-8">
@@ -541,7 +541,7 @@ export default function FaceoffPage() {
     <Suspense
       fallback={
         <main className="page-shell bottom-nav-space">
-          <Header active="home" />
+          <Header />
           <div className="container">
             <div className="card-strong h-64 animate-pulse rounded-2xl bg-white/5" />
           </div>
