@@ -26,6 +26,7 @@ type FaceoffBody = {
   cafeAId?: string
   cafeBId?: string
   winnerCafeId?: string
+  skipRankUpdate?: boolean   // true during an active BS/settle session
 }
 
 type ShelfRow = {
@@ -181,27 +182,34 @@ export async function POST(request: Request) {
       winner_cafe_id: aWon ? rowA.cafe_id ?? null : rowB.cafe_id ?? null,
     })
 
-    // ── 6. Recalculate ranks ──────────────────────────────────────────────────
-    const { data: allShelf } = await supabase
-      .from('shelf_items')
-      .select('id, score')
-      .eq('user_id', user.id)
-      .eq('category_id', categoryId)
-      .order('score', { ascending: false })
+    // ── 6. Recalculate ranks (skip during active ranking session) ─────────────
+    // When skipRankUpdate=true the client is mid-session; final rank is committed
+    // separately via /api/shelf/finalize-rank once the settle phase completes.
+    const skipRankUpdate = body.skipRankUpdate === true
+    let winnerNewRank: number | null = null
 
-    const rankUpdates = (allShelf ?? []).map((r, i) => ({
-      id: r.id,
-      rank: i + 1,
-    }))
-    await Promise.all(
-      rankUpdates.map(({ id, rank }) =>
-        supabase.from('shelf_items').update({ rank }).eq('id', id)
+    if (!skipRankUpdate) {
+      const { data: allShelf } = await supabase
+        .from('shelf_items')
+        .select('id, score')
+        .eq('user_id', user.id)
+        .eq('category_id', categoryId)
+        .order('score', { ascending: false })
+
+      const rankUpdates = (allShelf ?? []).map((r, i) => ({
+        id: r.id,
+        rank: i + 1,
+      }))
+      await Promise.all(
+        rankUpdates.map(({ id, rank }) =>
+          supabase.from('shelf_items').update({ rank }).eq('id', id)
+        )
       )
-    )
 
-    const winnerNewRank =
-      rankUpdates.find((r) => r.id === (aWon ? rowA.id : rowB.id))?.rank ??
-      null
+      winnerNewRank =
+        rankUpdates.find((r) => r.id === (aWon ? rowA.id : rowB.id))?.rank ??
+        null
+    }
 
     // ── 7. Award XP + check badges ────────────────────────────────────────────
     const totalFaceoffs = (rankUpdates.length > 0)
