@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { MapPin, Sparkles, Users, TrendingUp, RefreshCw, Coffee } from 'lucide-react'
+import { MapPin, Sparkles, Users, TrendingUp, RefreshCw, Coffee, UserSearch } from 'lucide-react'
 import { Header } from '@/components/Header'
 import Link from 'next/link'
 
@@ -28,9 +28,10 @@ const TABS = [
   { key: 'for-you',  label: 'For You',  icon: Sparkles },
   { key: 'friends',  label: 'Friends',  icon: Users },
   { key: 'city',     label: 'City',     icon: TrendingUp },
+  { key: 'people',   label: 'People',   icon: UserSearch },
 ] as const
 
-type TabKey = 'for-you' | 'friends' | 'city'
+type TabKey = 'for-you' | 'friends' | 'city' | 'people'
 
 function scoreToDisplay(score: number): string {
   const val = Math.max(1, Math.min(10, ((score - 800) / 800) * 9 + 1))
@@ -77,7 +78,7 @@ function EmptyState({ tab, empty }: { tab: TabKey; empty?: string }) {
 
 export default function DiscoverPage() {
   const [tab, setTab] = useState<TabKey>('for-you')
-  const [data, setData] = useState<Record<TabKey, DiscoverResult | null>>({ 'for-you': null, friends: null, city: null })
+  const [data, setData] = useState<Record<TabKey, DiscoverResult | null>>({ 'for-you': null, friends: null, city: null, people: null })
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(async (t: TabKey) => {
