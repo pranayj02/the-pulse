@@ -306,15 +306,15 @@ export async function POST(request: Request) {
           { onConflict: 'user_id,cafe_id', ignoreDuplicates: true }
         )
 
-      // Fetch rest of shelf sorted rank ASC — this is the sorted array the
-      // binary search will use as its search space.
+      // Fetch rest of shelf sorted by rank ASC — rank is stable during binary search,
+      // score drifts with each ELO update so we must NOT sort by score here.
       const { data: existingShelf } = await supabase
         .from('shelf_items')
         .select('cafe_id, score, rank, display_name')
         .eq('user_id', user.id)
         .eq('category_id', faceoffCategoryId)
         .neq('cafe_id', resolvedCafeId)
-        .order('score', { ascending: false })
+        .order('rank', { ascending: true })
 
      shelfCafes = (existingShelf ?? [])
         .filter((row): row is typeof row & { cafe_id: string } => Boolean(row.cafe_id))
