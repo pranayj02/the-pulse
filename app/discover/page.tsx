@@ -44,7 +44,7 @@ function EmptyState({ tab, empty }: { tab: TabKey; empty?: string }) {
         <Users size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
         <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 6 }}>No friend activity yet</p>
         <p style={{ fontSize: 13, maxWidth: '26ch', margin: '0 auto 20px' }}>{empty}</p>
-        <Link href="/profile" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 999, background: 'var(--color-accent)', color: '#111315', fontSize: 14, fontWeight: 600 }}>
+        <Link href="/people" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 999, background: 'var(--color-accent)', color: '#111315', fontSize: 14, fontWeight: 600 }}>
           Find people to follow
         </Link>
       </div>
