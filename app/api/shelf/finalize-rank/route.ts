@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
-// Called by LogVisitModal once the settle phase is complete.
-// Commits the final rank for the newly ranked café and re-sorts the entire shelf.
+type ShelfRow = {
+  id: string
+  cafe_id: string | null
+  score: number
+}
+
 export async function POST(request: Request) {
   try {
     const { cafeId, categoryId, finalRank } = await request.json() as {
@@ -21,8 +25,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch full shelf sorted by current ELO score DESC
-    const { data: allShelf, error: shelfErr } = await supabase
+    const { data: rawShelf, error: shelfErr } = await supabase
       .from('shelf_items')
       .select('id, cafe_id, score')
       .eq('user_id', user.id)
@@ -33,9 +36,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: shelfErr.message }, { status: 500 })
     }
 
-    const shelf = allShelf ?? []
+    const shelf = (rawShelf ?? []) as ShelfRow[]
 
-    // Re-sort by score and write ranks in one batch
     const rankUpdates = shelf.map((row, i) => ({ id: row.id, rank: i + 1 }))
 
     await Promise.all(
@@ -44,11 +46,8 @@ export async function POST(request: Request) {
       )
     )
 
-    // Return the actual rank of the newly ranked café based on score sort
-    const newCafeRow = rankUpdates.find((r) =>
-      shelf[rankUpdates.indexOf(r)]?.cafe_id === cafeId
-    )
-    const actualRank = newCafeRow?.rank ?? finalRank
+    const newCafeIdx = shelf.findIndex((r) => r.cafe_id === cafeId)
+    const actualRank = newCafeIdx >= 0 ? newCafeIdx + 1 : finalRank
 
     return NextResponse.json({ success: true, actualRank })
   } catch (err) {
