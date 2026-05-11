@@ -2,7 +2,6 @@ import Link from 'next/link'
 import {
   Award,
   MapPin,
-  Share2,
   Sparkles,
   Trophy,
 } from 'lucide-react'
@@ -12,6 +11,7 @@ import { BrandCard } from '@/components/BrandCard'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import type { Brand } from '@/lib/types'
 import { EditProfileButton } from '@/components/EditProfileButton'
+import { ShareProfileButton } from '@/components/ShareProfileButton'
 
 type ProfileRow = {
   id: string
@@ -321,10 +321,7 @@ export default async function ProfilePage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <button className="cta-secondary">
-                <Share2 size={16} />
-                <span>Share profile</span>
-              </button>
+              <ShareProfileButton userId={user.id} />
 
               <EditProfileButton
                 initialName={profile?.full_name ?? null}
