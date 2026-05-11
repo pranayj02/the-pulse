@@ -187,6 +187,7 @@ export function LogVisitModal({ onClose, prefillCafe }: Props) {
           cafeAId: seededCafeId,
           cafeBId: opponent.cafeId,
           winnerCafeId: winnerId,
+          skipRankUpdate: true,
         }),
       })
       const data = await res.json()
@@ -196,7 +197,22 @@ export function LogVisitModal({ onClose, prefillCafe }: Props) {
       setBsState(nextBS)
 
       if (nextBS.done) {
-        setFinalRank(nextBS.insertionRank)
+        // Commit final rank — re-sorts full shelf by ELO after all settle comparisons
+        try {
+          const finalRes = await fetch('/api/shelf/finalize-rank', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cafeId: seededCafeId,
+              categoryId,
+              finalRank: nextBS.insertionRank,
+            }),
+          })
+          const finalData = await finalRes.json()
+          setFinalRank(finalData.actualRank ?? nextBS.insertionRank)
+        } catch {
+          setFinalRank(nextBS.insertionRank)
+        }
         setPhase('done')
       }
     } catch (error) {
