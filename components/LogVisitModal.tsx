@@ -141,11 +141,8 @@ export function LogVisitModal({ onClose, prefillCafe }: Props) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Could not log visit.')
 
-      // Cap shelf to 7 items max → guarantees ≤ 3 ELO rounds (ceil(log2(8)) = 3)
       const shelfCafes: ShelfCafe[] = Array.isArray(data.shelfCafes)
-        ? (data.shelfCafes as ShelfCafe[])
-            .filter((c) => c.cafeId && c.displayName)
-            
+        ? (data.shelfCafes as ShelfCafe[]).filter((c) => c.cafeId && c.displayName)
         : []
 
       if (data.cafeId && data.categoryId && shelfCafes.length > 0) {
