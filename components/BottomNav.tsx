@@ -2,16 +2,16 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, BookOpen, User2, Plus } from 'lucide-react'
+import { Home, Compass, BookOpen, User2, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 import { LogVisitModal } from '@/components/LogVisitModal'
 
 const NAV = [
-  { key: 'feed',     label: 'Feed',     href: '/',         icon: Home },
-  { key: 'people',   label: 'People',   href: '/people',   icon: Users },
-  { key: 'shelf',    label: 'Shelf',    href: '/shelf',    icon: BookOpen },
-  { key: 'profile',  label: 'Profile',  href: '/profile',  icon: User2 },
+  { key: 'feed',     label: 'Feed',     href: '/',          icon: Home },
+  { key: 'discover', label: 'Discover', href: '/discover',  icon: Compass },
+  { key: 'shelf',    label: 'Shelf',    href: '/shelf',     icon: BookOpen },
+  { key: 'profile',  label: 'Profile',  href: '/profile',   icon: User2 },
 ] as const
 
 export function BottomNav() {
@@ -20,7 +20,7 @@ export function BottomNav() {
 
   function activeKey() {
     if (path === '/' || path === '') return 'feed'
-    if (path.startsWith('/people'))    return 'people'
+    if (path.startsWith('/discover'))  return 'discover'
     if (path.startsWith('/shelf'))     return 'shelf'
     if (path.startsWith('/profile'))   return 'profile'
     return ''
