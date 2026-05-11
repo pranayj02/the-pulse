@@ -373,7 +373,7 @@ export function LogVisitModal({ onClose, prefillCafe }: Props) {
             <div className="mb-5">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs uppercase tracking-widest text-[var(--color-text-faint)]">
-                  Quick ranking · {currentStep} of {maxSteps}
+                  {bsState?.phase === 'settle' ? 'Settling rank' : 'Quick ranking'} · {currentStep} of {maxSteps}
                 </p>
                 <button
                   onClick={() => { setPhase('done'); setFinalRank(null) }}
@@ -423,7 +423,13 @@ export function LogVisitModal({ onClose, prefillCafe }: Props) {
                 <p className="text-sm font-semibold text-white leading-tight">
                   {currentOpponent.displayName}
                 </p>
-                <span className="text-xs text-[var(--color-text-faint)]">#{currentOpponent.rank} on shelf</span>
+                <span className="text-xs text-[var(--color-text-faint)]">
+                    {bsState?.phase === 'settle'
+                      ? bsState.settleDir === 'up'
+                        ? `Testing above · #${currentOpponent.rank}`
+                        : `Testing below · #${currentOpponent.rank}`
+                      : `#${currentOpponent.rank} on shelf`}
+                  </span>
               </button>
             </div>
 
