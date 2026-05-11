@@ -48,15 +48,35 @@ export default async function HomePage({ searchParams }: PageProps) {
           <div className="flex flex-col items-center py-16 text-center gap-3">
             <p className="section-title">Nothing here yet</p>
             <p className="text-sm" style={{ color: 'var(--color-text-muted)', maxWidth: '26ch' }}>
-              Log a visit and your feed will come alive.
+              {scope === 'following'
+                ? 'Follow people to see their visits here.'
+                : 'Log a visit and your feed will come alive.'}
             </p>
-            <Link href="/discover" className="btn-primary mt-2">Discover cafés</Link>
+            {scope === 'following' ? (
+              <Link href="/people" className="btn-primary mt-2">Find people to follow</Link>
+            ) : (
+              <Link href="/discover" className="btn-primary mt-2">Discover cafés</Link>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
             {feed.items.map((item) => (
               <FeedCard key={item.id} item={item} />
             ))}
+            {scope === 'following' && (
+              <Link
+                href="/people"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  padding: '12px', borderRadius: 12, marginTop: 4,
+                  border: '1px dashed var(--color-border)',
+                  color: 'var(--color-text-muted)', fontSize: 13, fontWeight: 600,
+                  textDecoration: 'none',
+                }}
+              >
+                + Find more people to follow
+              </Link>
+            )}
           </div>
         )}
 
