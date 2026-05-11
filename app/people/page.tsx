@@ -14,6 +14,7 @@ type UserHit = {
   xp: number
   level: string
   bio: string | null
+  avatar_url: string | null
   isFollowing: boolean
 }
 
