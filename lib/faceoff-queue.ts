@@ -1,10 +1,11 @@
 // Ranking state machine: binary search → settling phase.
 //
-// Phase 1 (BS):       Find a candidate rank in O(log N) comparisons.
-// Phase 2 (SETTLE):   Validate rank against direct neighbours until stable.
-//                     Stable = loses to item above AND beats item below.
+// Phase 1 (BS):    Find a candidate insertion index in O(log N) comparisons.
+// Phase 2 (SETTLE): Walk neighbors until rank is confirmed by direct comparison.
+//   Stable = explicitly lost to the item directly above AND beat the item directly below.
 //
-// Shelf MUST be sorted by rank ASC (rank 1 = best, index 0).
+// Shelf is sorted rank ASC: index 0 = rank 1 (best), index N-1 = rank N (worst).
+// candidateIdx is the 0-indexed insertion position (rank = candidateIdx + 1).
 
 export type ShelfCafe = {
   cafeId: string
@@ -14,21 +15,19 @@ export type ShelfCafe = {
 }
 
 export type RankPhase = 'bs' | 'settle'
+export type SettleDir = 'up' | 'down' | 'done'
 
 export type BSState = {
-  shelf: ShelfCafe[]        // sorted rank ASC — index 0 = rank 1
-  // Binary-search window
+  shelf: ShelfCafe[]
   low: number
   high: number
-  // Settling
   phase: RankPhase
-  candidateIdx: number      // proposed 0-indexed insertion position (set after BS)
-  settleDir: 'up' | 'down' | 'done'
-  // Progress
+  candidateIdx: number      // proposed 0-indexed insertion position
+  settleDir: SettleDir
   step: number
   maxSteps: number
   done: boolean
-  insertionRank: number | null
+  insertionRank: number | null  // 1-indexed, set only when done
 }
 
 export function initBS(shelf: ShelfCafe[]): BSState {
@@ -39,8 +38,6 @@ export function initBS(shelf: ShelfCafe[]): BSState {
       step: 1, maxSteps: 1, done: true, insertionRank: 1,
     }
   }
-  // Estimate: log2(N+1) for BS + up to N settle steps worst case, cap display at N+log2
-  const maxSteps = Math.ceil(Math.log2(shelf.length + 1)) + shelf.length
   return {
     shelf,
     low: 0,
@@ -49,13 +46,13 @@ export function initBS(shelf: ShelfCafe[]): BSState {
     candidateIdx: 0,
     settleDir: 'done',
     step: 1,
-    maxSteps,
+    maxSteps: Math.ceil(Math.log2(shelf.length + 1)) + shelf.length,
     done: false,
     insertionRank: null,
   }
 }
 
-// Who to compare against right now
+// Returns the opponent the user must compare against right now.
 export function getCurrentOpponent(state: BSState): ShelfCafe | null {
   if (state.done) return null
 
@@ -65,23 +62,23 @@ export function getCurrentOpponent(state: BSState): ShelfCafe | null {
     return state.shelf[mid] ?? null
   }
 
-  // settle phase — compare against the neighbour we're validating
+  // settle phase
   if (state.settleDir === 'up') {
-    // Testing: can new entry beat the item just ABOVE candidate?
-    // i.e. item at candidateIdx - 1
-    return state.shelf[state.candidateIdx - 1] ?? null
+    // Test the item directly ABOVE (lower index = better rank)
+    const aboveIdx = state.candidateIdx - 1
+    return aboveIdx >= 0 ? state.shelf[aboveIdx] ?? null : null
   }
   if (state.settleDir === 'down') {
-    // Testing: does new entry beat the item just BELOW candidate?
-    // i.e. item at candidateIdx (the one we'd displace)
-    return state.shelf[state.candidateIdx] ?? null
+    // Test the item directly BELOW (higher index = worse rank)
+    const belowIdx = state.candidateIdx
+    return belowIdx < state.shelf.length ? state.shelf[belowIdx] ?? null : null
   }
   return null
 }
 
-// Advance state based on outcome.
-// newEntryWon = true  → new café is BETTER than current opponent
-// newEntryWon = false → new café is WORSE  than current opponent
+// Advance state based on outcome of the current comparison.
+// newEntryWon = true  → new café is BETTER than the current opponent
+// newEntryWon = false → new café is WORSE  than the current opponent
 export function advanceBS(state: BSState, newEntryWon: boolean): BSState {
   if (state.done) return state
 
@@ -90,15 +87,13 @@ export function advanceBS(state: BSState, newEntryWon: boolean): BSState {
   // ── Phase 1: Binary search ──────────────────────────────────────────────────
   if (state.phase === 'bs') {
     const mid = Math.floor((state.low + state.high) / 2)
-
     const newLow  = newEntryWon ? state.low  : mid + 1
     const newHigh = newEntryWon ? mid - 1    : state.high
 
     if (newLow > newHigh) {
-      // BS window exhausted — proposed insertion at 0-indexed newLow
-      return enterSettlePhase({ ...next, low: newLow, high: newHigh }, newLow)
+      // Window exhausted — enter settle at proposed index newLow
+      return startSettle({ ...next, low: newLow, high: newHigh }, newLow)
     }
-
     return { ...next, low: newLow, high: newHigh }
   }
 
@@ -106,19 +101,23 @@ export function advanceBS(state: BSState, newEntryWon: boolean): BSState {
   if (state.phase === 'settle') {
 
     if (state.settleDir === 'up') {
+      const aboveIdx = state.candidateIdx - 1
+
       if (newEntryWon) {
-        // New entry beat the item above → move candidate up by 1
-        const newIdx = state.candidateIdx - 1
-        // Check if we're now at the top
-        if (newIdx === 0) {
-          return finalize(next, 0)   // rank 1
+        // Beat the item above → move candidate up (toward index 0)
+        const newCandidateIdx = aboveIdx  // insert at aboveIdx now
+        if (newCandidateIdx <= 0) {
+          // At or above index 0 — no more items above, switch to down-settle
+          // to confirm we actually beat the current #1
+          return { ...next, candidateIdx: 0, settleDir: 'down' }
         }
-        // Still has items above — keep checking upward
-        return { ...next, candidateIdx: newIdx, settleDir: 'up' }
+        // Still items above — keep going up
+        return { ...next, candidateIdx: newCandidateIdx, settleDir: 'up' }
       } else {
-        // New entry lost to item above → candidate rank is confirmed
-        // Now validate downward: beat the item AT candidate position?
+        // Lost to item above → confirmed upper boundary
+        // Now validate lower boundary: do we beat the item below?
         if (state.candidateIdx >= state.shelf.length) {
+          // No item below — last place confirmed
           return finalize(next, state.candidateIdx)
         }
         return { ...next, settleDir: 'down' }
@@ -126,16 +125,19 @@ export function advanceBS(state: BSState, newEntryWon: boolean): BSState {
     }
 
     if (state.settleDir === 'down') {
-      if (!newEntryWon) {
-        // New entry lost to item below → move candidate down by 1
-        const newIdx = state.candidateIdx + 1
-        if (newIdx >= state.shelf.length) {
-          return finalize(next, newIdx)  // last place
-        }
-        return { ...next, candidateIdx: newIdx, settleDir: 'down' }
-      } else {
-        // New entry beat item below → rank is confirmed stable
+      const belowIdx = state.candidateIdx
+
+      if (newEntryWon) {
+        // Beat the item at belowIdx → rank is candidateIdx + 1, confirmed
         return finalize(next, state.candidateIdx)
+      } else {
+        // Lost to item below → move candidate down (toward end of shelf)
+        const newCandidateIdx = belowIdx + 1
+        if (newCandidateIdx >= state.shelf.length) {
+          // Fell past end — last place
+          return finalize(next, state.shelf.length)
+        }
+        return { ...next, candidateIdx: newCandidateIdx, settleDir: 'down' }
       }
     }
   }
@@ -143,48 +145,26 @@ export function advanceBS(state: BSState, newEntryWon: boolean): BSState {
   return { ...next, done: true }
 }
 
-// Enter the settle phase at a proposed 0-indexed candidate position
-function enterSettlePhase(state: BSState, candidateIdx: number): BSState {
-  const s = state.shelf
+// Enter settle phase at a proposed 0-indexed insertion position.
+// If at end of shelf, validate upward. If at start, validate downward.
+// Otherwise validate upward first (more common early exit).
+function startSettle(state: BSState, candidateIdx: number): BSState {
+  const n = state.shelf.length
 
-  // Edge cases — no neighbours to test
-  if (s.length === 0) return finalize(state, 0)
-  if (candidateIdx === 0 && s.length === 0) return finalize(state, 0)
+  if (n === 0) return finalize(state, 0)
 
-  // If proposed position is beyond the shelf, it's last place — no down-settle needed
-  // but check upward if there are items above
-  if (candidateIdx >= s.length) {
-    if (s.length === 0) return finalize(state, 0)
-    // Need to validate: does new beat the last item? Start down-settle at last idx
-    return {
-      ...state,
-      phase: 'settle',
-      candidateIdx: s.length,  // insertion after all items
-      settleDir: 'down',
-    }
+  if (candidateIdx >= n) {
+    // Proposed last place — validate upward from end
+    return { ...state, phase: 'settle', candidateIdx: n, settleDir: 'up' }
   }
 
-  // Normal: enter settle by checking upward first (can we beat what's above?)
-  if (candidateIdx > 0) {
-    return {
-      ...state,
-      phase: 'settle',
-      candidateIdx,
-      settleDir: 'up',
-    }
+  if (candidateIdx === 0) {
+    // Proposed rank 1 — validate downward (test vs current #1)
+    return { ...state, phase: 'settle', candidateIdx: 0, settleDir: 'down' }
   }
 
-  // candidateIdx === 0 — proposed rank 1, start down-settle (validate we beat #1 spot)
-  if (s.length > 0) {
-    return {
-      ...state,
-      phase: 'settle',
-      candidateIdx: 0,
-      settleDir: 'down',
-    }
-  }
-
-  return finalize(state, 0)
+  // Middle position — validate upward first
+  return { ...state, phase: 'settle', candidateIdx, settleDir: 'up' }
 }
 
 function finalize(state: BSState, idx: number): BSState {
@@ -193,6 +173,6 @@ function finalize(state: BSState, idx: number): BSState {
     phase: 'settle',
     settleDir: 'done',
     done: true,
-    insertionRank: idx + 1,   // 1-indexed
+    insertionRank: idx + 1,
   }
 }
