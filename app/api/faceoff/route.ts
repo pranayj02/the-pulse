@@ -212,13 +212,11 @@ export async function POST(request: Request) {
     }
 
     // ── 7. Award XP + check badges ────────────────────────────────────────────
-    const totalFaceoffs = (rankUpdates.length > 0)
-      ? await supabase
-          .from('comparisons')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .then((r: { count: number | null }) => (r.count ?? 0) + 1)
-      : 1
+    const totalFaceoffs = await supabase
+      .from('comparisons')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .then((r: { count: number | null }) => (r.count ?? 0) + 1)
 
     await awardXP(supabase, user.id, 2, [
       {
