@@ -347,8 +347,8 @@ export default async function PublicProfilePage({
                   <h2 className="heading-md mt-2 text-white">Top brands on their shelf</h2>
                 </div>
 
-                <Link href="/shelf" className="text-sm font-medium text-accent">
-                  View all
+                <Link href={`/profile/${profile.id}/shelf`} className="text-sm font-medium text-accent">
+                  View full shelf
                 </Link>
               </div>
 
