@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { MapPin, Sparkles, Users, TrendingUp, RefreshCw, Coffee, UserSearch } from 'lucide-react'
 import { Header } from '@/components/Header'
 import Link from 'next/link'
+import { PeopleTab } from '@/components/PeopleTab'
 
 type Rec = {
   cafeId: string
@@ -82,6 +83,7 @@ export default function DiscoverPage() {
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(async (t: TabKey) => {
+    if (t === 'people') return // people tab renders its own component
     if (data[t] !== null) return // already loaded
     setLoading(true)
     try {
@@ -179,13 +181,16 @@ export default function DiscoverPage() {
           </div>
         )}
 
+        {/* People tab — renders its own search UI */}
+        {tab === 'people' && <PeopleTab />}
+
         {/* Empty state */}
-        {!loading && recs.length === 0 && (
+        {tab !== 'people' && !loading && recs.length === 0 && (
           <EmptyState tab={tab} empty={current?.empty} />
         )}
 
         {/* Recommendation list */}
-        {!loading && recs.length > 0 && (
+        {tab !== 'people' && !loading && recs.length > 0 && (
           <div className="card">
             {recs.map((rec, i) => {
               const score = scoreToDisplay(rec.avgScore)
@@ -220,7 +225,7 @@ export default function DiscoverPage() {
         )}
 
         {/* Attribution note */}
-        {!loading && recs.length > 0 && (
+        {tab !== 'people' && !loading && recs.length > 0 && (
           <p style={{ fontSize: 11, color: 'var(--color-text-faint)', textAlign: 'center', marginTop: 16 }}>
             Scores are ELO-based · Updated after every face-off
           </p>
